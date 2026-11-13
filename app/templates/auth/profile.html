@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+{% import 'macros/icons.html' as icons %}
+{% block content %}
+  <div class="dashboard">
+    <section class="content-panel" aria-labelledby="profile-heading">
+      <h1 id="profile-heading">{{ icons.icon('user-round') }}Account profile &amp; security</h1>
+      {% if security_protected %}
+        <p class="security-status security-status-ok">{{ icons.icon('shield-check') }}Account Protected</p>
+      {% else %}
+        <p class="security-status security-status-alert">Security setup is incomplete. Use HTTPS, a strong password, and two-factor authentication.</p>
+      {% endif %}
+
+      {% if student_profile %}
+        <section class="profile-summary" aria-label="Student photo">
+          {% if student_profile.profile_photo %}
+            <img class="profile-photo" src="{{ url_for('auth.profile_photo', user_id=current_user.id) }}" alt="Profile photo for {{ current_user.full_name }}" />
+          {% else %}
+            <div class="profile-photo-placeholder" aria-hidden="true">{{ current_user.full_name[:1]|upper }}</div>
+          {% endif %}
+          <form method="post" action="{{ url_for('auth.update_profile_photo') }}" enctype="multipart/form-data">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+            <label class="field" for="profile_photo">Profile photo (JPEG, PNG, or WebP; max 1 MB)</label>
+            <input id="profile_photo" name="profile_photo" type="file" accept="image/jpeg,image/png,image/webp" required />
+            <button class="secondary-btn" type="submit">{{ icons.icon('camera') }}Update photo</button>
+          </form>
+        </section>
+      {% endif %}
+
+      <h3>{{ icons.icon('user-round') }}Personal information</h3>
+      <form method="post" action="{{ url_for('auth.profile') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+        <input type="hidden" name="action" value="profile" />
+        <div class="profile-grid">
+          <div class="field">
+            <label for="full_name">Full name</label>
+            <input id="full_name" name="full_name" maxlength="255" value="{{ current_user.full_name }}" required />
+          </div>
+          <div class="field">
+            <label for="student_number">Register number / login ID</label>
+            <input id="student_number" value="{{ student_profile.student_number if student_profile else current_user.email }}" disabled />
+          </div>
+          <div class="field">
+            <label for="email">Verified email address</label>
+            <input id="email" type="email" value="{{ current_user.email }}" disabled />
+            <small class="muted">Email changes require account verification and are not available here.</small>
+          </div>
+          <div class="field">
+            <label for="phone">Phone number</label>
+            <input id="phone" name="phone" maxlength="40" value="{{ current_user.phone or '' }}" />
+          </div>
+          {% if student_profile %}
+            <div class="field">
+              <label for="department">Department</label>
+              <input id="department" value="{{ student_profile.department.name if student_profile.department else 'Not assigned' }}" disabled />
+            </div>
+            <div class="field">
+              <label for="year">Year of study</label>
+              <input id="year" value="{{ student_profile.year or 'Not assigned' }}" disabled />
+            </div>
+            <div class="field">
+              <label for="section">Section</label>
+              <input id="section" value="{{ student_profile.section or 'Not assigned' }}" disabled />
+            </div>
+            <div class="field">
+              <label for="date_of_birth">Date of birth</label>
+              <input id="date_of_birth" type="date" name="date_of_birth" value="{{ student_profile.date_of_birth.isoformat() if student_profile.date_of_birth else '' }}" />
+            </div>
+            <div class="field">
+              <label for="gender">Gender</label>
+              <input id="gender" name="gender" maxlength="40" value="{{ student_profile.gender or '' }}" />
+            </div>
+          {% endif %}
+          <div class="field">
+            <label for="location">Location</label>
+            <input id="location" name="location" maxlength="120" value="{{ current_user.location or '' }}" />
+          </div>
+          <div class="field">
+            <label for="privacy_level">Profile privacy</label>
+            <select id="privacy_level" name="privacy_level">
+              <option value="standard" {% if current_user.privacy_level == 'standard' %}selected{% endif %}>Standard</option>
+              <option value="limited" {% if current_user.privacy_level == 'limited' %}selected{% endif %}>Limited</option>
+            </select>
+          </div>
+          <div class="field profile-field-wide">
+            <label for="bio">About</label>
+            <textarea id="bio" name="bio" maxlength="2000" rows="4">{{ current_user.bio or '' }}</textarea>
+          </div>
+        </div>
+        <button class="primary-btn" type="submit">{{ icons.icon('save') }}Save permitted details</button>
+      </form>
+
+      {% if student_profile %}
+        <h3>{{ icons.icon('shield-check') }}Account security</h3>
+        <div class="profile-grid">
+          <div class="field">
+            <label>Last successful login</label>
+            <input value="{{ current_user.last_login.strftime('%Y-%m-%d %H:%M UTC') if current_user.last_login else 'No successful login recorded' }}" disabled />
+          </div>
+          <div class="field">
+            <label>Two-factor authentication</label>
+            <input value="{{ 'Enabled' if current_user.totp_enabled else 'Not enabled' }}" disabled />
+          </div>
+          <div class="field">
+            <label>Current browser session</label>
+            <input value="Signed in; expires {{ current_session.expires_at.strftime('%Y-%m-%d %H:%M UTC') if current_session else 'at the configured timeout' }}" disabled />
+          </div>
+        </div>
+        <h4>Active sessions on this account: {{ active_sessions|length }}</h4>
+        <ul class="request-list">
+          {% for active_session in active_sessions %}
+            <li>
+              {{ 'This device' if active_session.session_id == session.get('server_session_id') else 'Other device' }}
+              · Started {{ active_session.created_at.strftime('%Y-%m-%d %H:%M UTC') }}
+              · Last active {{ active_session.last_seen_at.strftime('%Y-%m-%d %H:%M UTC') }}
+            </li>
+          {% else %}
+            <li>No active sessions are recorded.</li>
+          {% endfor %}
+        </ul>
+
+        {% if not current_user.totp_enabled and not current_user.totp_secret %}
+          <form method="post" action="{{ url_for('auth.profile') }}" class="security-action">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+            <input type="hidden" name="action" value="totp_setup" />
+            <div class="field">
+              <label for="totp-setup-password">Current password to start 2FA setup</label>
+              <input id="totp-setup-password" type="password" name="current_password" autocomplete="current-password" required />
+            </div>
+            <button class="secondary-btn" type="submit">{{ icons.icon('shield-check') }}Set up authenticator app</button>
+          </form>
+        {% elif not current_user.totp_enabled %}
+          <div class="security-action">
+            <p>Scan this QR code in an authenticator app, then enter its current six-digit code.</p>
+            {% if totp_qr_data %}
+              <img class="totp-qr" src="data:image/png;base64,{{ totp_qr_data }}" alt="Authenticator setup QR code" />
+            {% endif %}
+            <p class="muted">Manual setup key: <code>{{ totp_secret_for_display }}</code></p>
+            <form method="post" action="{{ url_for('auth.profile') }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+              <input type="hidden" name="action" value="totp_enable" />
+              <div class="field"><label for="totp-enable-code">Authenticator code</label><input id="totp-enable-code" name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required /></div>
+              <button class="secondary-btn" type="submit">Verify and enable 2FA</button>
+            </form>
+          </div>
+        {% else %}
+          <form method="post" action="{{ url_for('auth.profile') }}" class="security-action">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+            <input type="hidden" name="action" value="totp_disable" />
+            <div class="field"><label for="totp-disable-password">Current password</label><input id="totp-disable-password" type="password" name="current_password" autocomplete="current-password" required /></div>
+            <div class="field"><label for="totp-disable-code">Current authenticator code</label><input id="totp-disable-code" name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required /></div>
+            <button class="secondary-btn" type="submit">Disable two-factor authentication</button>
+          </form>
+        {% endif %}
+
+        <form method="post" action="{{ url_for('auth.profile') }}" class="security-action">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+          <input type="hidden" name="action" value="change_password" />
+          <h4>Change password</h4>
+          <div class="profile-grid">
+            <div class="field"><label for="current-password">Current password</label><input id="current-password" type="password" name="current_password" autocomplete="current-password" required /></div>
+            <div class="field"><label for="new-password">New password (at least 12 characters)</label><input id="new-password" type="password" name="new_password" autocomplete="new-password" minlength="12" required /></div>
+          </div>
+          <button class="secondary-btn" type="submit">Change password</button>
+        </form>
+
+        <form method="post" action="{{ url_for('auth.profile') }}" class="security-action">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+          <input type="hidden" name="action" value="logout_all" />
+          <h4>Active sessions</h4>
+          <p class="muted">Use this control to invalidate this login and all other devices.</p>
+          <button class="secondary-btn" type="submit">{{ icons.icon('log-out') }}Logout from all devices</button>
+        </form>
+      {% endif %}
+    </section>
+  </div>
+{% endblock %}

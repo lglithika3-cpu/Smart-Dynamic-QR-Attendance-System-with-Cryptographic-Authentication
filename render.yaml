@@ -1,0 +1,31 @@
+services:
+  - type: web
+    name: privacy-attendance
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: flask --app run.py db upgrade && flask --app run.py bootstrap-admin && gunicorn --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 120 run:app
+    healthCheckPath: /attendance/health
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_SSL_CA
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true
+      - key: QR_SIGNING_SECRET
+        sync: false
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: REQUIRE_DATABASE_URL
+        value: "true"
+      - key: SESSION_COOKIE_SECURE
+        value: "true"
+      - key: TRUST_PROXY
+        value: "true"
+      - key: PUBLIC_BASE_URL
+        sync: false
+      - key: RATELIMIT_STORAGE_URI
+        value: memory://

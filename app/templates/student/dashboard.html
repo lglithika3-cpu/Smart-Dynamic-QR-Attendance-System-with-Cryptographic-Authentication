@@ -1,0 +1,191 @@
+{% extends 'base.html' %}
+{% import 'macros/icons.html' as icons %}
+
+{% block content %}
+<div class="dashboard">
+  <aside class="sidebar" aria-label="Student navigation">
+    <div class="sidebar-heading">
+      <a class="sidebar-brand" href="#overview">{{ icons.icon('qr-code') }}<span class="sidebar-copy"><strong>Privacy Attendance</strong><small>Student workspace</small></span></a>
+      <button class="sidebar-toggle" type="button" aria-label="Collapse navigation" aria-expanded="true" title="Collapse navigation">{{ icons.icon('chevron-left') }}</button>
+    </div>
+    <ul class="sidebar-nav">
+      <li><a class="sidebar-link" href="{{ url_for('auth.profile') }}" data-tooltip="My Profile" aria-label="My Profile">{{ icons.icon('user-round') }}<span class="nav-label">My Profile</span></a></li>
+      <li><a class="sidebar-link active" href="#overview" data-tooltip="My Attendance" aria-label="My Attendance">{{ icons.icon('clipboard-check') }}<span class="nav-label">My Attendance</span></a></li>
+      <li><a class="sidebar-link" href="{{ url_for('student.scan') }}" data-tooltip="Scan QR" aria-label="Scan QR">{{ icons.icon('scan-qr-code') }}<span class="nav-label">Scan QR</span></a></li>
+      <li><a class="sidebar-link" href="#subjects" data-tooltip="My subjects" aria-label="My subjects">{{ icons.icon('book-open') }}<span class="nav-label">My subjects</span></a></li>
+      <li><a class="sidebar-link" href="#history" data-tooltip="Attendance history" aria-label="Attendance history">{{ icons.icon('history') }}<span class="nav-label">Attendance history</span></a></li>
+    </ul>
+    <div class="sidebar-footer">
+      <form method="post" action="{{ url_for('auth.logout') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+        <button class="sidebar-link logout-link" type="submit" data-tooltip="Logout" aria-label="Logout" title="Logout">{{ icons.icon('log-out') }}<span class="nav-label">Logout</span></button>
+      </form>
+    </div>
+  </aside>
+
+  <section class="content-panel" id="overview">
+    <h1>{{ icons.icon('clipboard-check') }}My Attendance</h1>
+    <p class="muted">Welcome, {{ current_user.full_name }}{% if current_user.student_profile and current_user.student_profile.student_number %} · {{ current_user.student_profile.student_number }}{% endif %}</p>
+
+    <div class="stats-grid">
+      <div class="stat-card">{{ icons.icon('book-open') }}<div><span>Enrolled subjects</span><strong>{{ enrollments|length }}</strong></div></div>
+      <div class="stat-card">{{ icons.icon('calendar-clock') }}<div><span>Total classes</span><strong>{{ total_classes }}</strong></div></div>
+      <div class="stat-card">{{ icons.icon('clipboard-check') }}<div><span>Classes attended</span><strong>{{ classes_attended }}</strong></div></div>
+      <div class="stat-card">{{ icons.icon('calendar-clock') }}<div><span>Classes absent</span><strong>{{ classes_missed }}</strong></div></div>
+      <div class="stat-card">{{ icons.icon('chart-no-axes-combined') }}<div><span>Overall attendance</span><strong>{{ attendance_percentage }}%</strong></div></div>
+    </div>
+
+    <div class="panel-card attendance-overview">
+      <div class="attendance-status">
+        <strong class="status-pill {{ 'status-eligible' if attendance_eligible else 'status-shortage' }}">
+          {{ 'Eligible' if attendance_eligible else ('Shortage' if total_classes else 'No classes yet') }}
+        </strong>
+        <span class="muted">Required attendance: {{ attendance_threshold }}%</span>
+        {% if latest_attendance %}
+          <span class="muted">Last attendance: {{ latest_attendance.checked_in_at.strftime('%Y-%m-%d %H:%M UTC') }}</span>
+        {% endif %}
+      </div>
+      <label for="attendance-progress">Overall attendance progress</label>
+      <progress id="attendance-progress" max="100" value="{{ attendance_percentage }}">{{ attendance_percentage }}%</progress>
+    </div>
+
+    {% if notifications or security_alerts or announcements %}
+      <div class="panel-card notification-panel" aria-labelledby="notification-heading">
+        <h3 id="notification-heading">{{ icons.icon('bell') }}Notifications</h3>
+        <ul class="notification-list">
+          {% for notification in notifications %}
+            <li class="{{ notification.kind }}">{{ notification.message }}</li>
+          {% endfor %}
+          {% for alert in security_alerts %}
+            <li class="warning">{{ alert.event_type|replace('_', ' ')|title }} · {{ alert.created_at.strftime('%Y-%m-%d %H:%M UTC') }}</li>
+          {% endfor %}
+          {% for announcement in announcements %}
+            <li>
+              <strong>{{ 'Upcoming announcement' if announcement.starts_at > now else 'Announcement' }}: {{ announcement.title }}</strong>
+              · {{ announcement.starts_at.strftime('%Y-%m-%d %H:%M UTC') }} · {{ announcement.message }}
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+
+    <div class="panel-card subject-panel">
+      <h3 id="subjects">{{ icons.icon('book-open') }}Subject-wise attendance</h3>
+      {% if subject_summaries %}
+        <table>
+          <thead><tr><th>Subject</th><th>Code</th><th>Faculty</th><th>Total classes</th><th>Attended</th><th>Absent</th><th>Percentage</th><th>Record</th></tr></thead>
+          <tbody>
+            {% for summary in subject_summaries %}
+              <tr>
+                <td>{{ summary.enrollment.subject.name }}</td>
+                <td>{{ summary.enrollment.subject.code }}</td>
+                <td>{{ summary.faculty_names }}</td>
+                <td>{{ summary.conducted }}</td>
+                <td>{{ summary.attended }}</td>
+                <td>{{ summary.missed }}</td>
+                <td><strong>{{ summary.percentage }}%</strong><progress max="100" value="{{ summary.percentage }}" aria-label="{{ summary.enrollment.subject.name }} attendance">{{ summary.percentage }}%</progress></td>
+                <td><a class="secondary-btn" href="{{ url_for('student.subject_history', subject_id=summary.enrollment.subject_id) }}">View history</a></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <p class="muted">No subjects are currently assigned to your profile.</p>
+      {% endif %}
+    </div>
+
+    <div class="panel-card" id="available-sessions">
+      <h3>{{ icons.icon('calendar-clock') }}Available attendance sessions</h3>
+      {% if sessions %}
+        <ul>
+          {% for session in sessions %}
+            <li>{{ session.title }} - {{ session.subject.name }} <span class="muted">(Open)</span></li>
+          {% endfor %}
+        </ul>
+        <a class="primary-btn" href="{{ url_for('student.scan') }}">{{ icons.icon('scan-qr-code') }}Scan Attendance QR</a>
+      {% else %}
+        <p class="muted">There are no open sessions for your enrolled subjects.</p>
+      {% endif %}
+    </div>
+
+    <div class="panel-card report-panel">
+      <h3>{{ icons.icon('file-spreadsheet') }}Reports &amp; monthly summary</h3>
+      <form method="get" action="{{ url_for('student.dashboard') }}" class="month-filter">
+        <div class="field">
+          <label for="month">Select month</label>
+          <input id="month" type="month" name="month" value="{{ selected_month }}" />
+        </div>
+        <button class="secondary-btn" type="submit">{{ icons.icon('filter') }}View summary</button>
+        <a class="primary-btn" href="{{ url_for('student.attendance_report', month=selected_month) if selected_month else url_for('student.attendance_report') }}">{{ icons.icon('download') }}Download PDF</a>
+        <button class="secondary-btn" type="button" onclick="window.print()">Print records</button>
+      </form>
+      {% if selected_month %}
+        <p>{{ selected_month }}: {{ monthly_attended }} of {{ monthly_total }} classes attended ({{ monthly_percentage }}%).</p>
+      {% endif %}
+    </div>
+
+    <div class="panel-card" id="history">
+      <h3>{{ icons.icon('history') }}QR attendance history</h3>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>Date</th><th>Subject</th><th>Faculty</th><th>Class / period</th><th>Status</th><th>Verification</th><th>Marked at (UTC)</th><th>Correction request</th></tr></thead>
+          <tbody>
+            {% for record in records %}
+              <tr>
+                <td>{{ record.session.start_time.strftime('%Y-%m-%d') if record.session.start_time else record.checked_in_at.strftime('%Y-%m-%d') }}</td>
+                <td>{{ record.session.subject.name }} ({{ record.session.subject.code }})</td>
+                <td>{{ record.session.faculty.user.full_name if record.session.faculty and record.session.faculty.user else 'Not assigned' }}</td>
+                <td>{{ record.session.title }}</td>
+                <td>{{ record.status|title }}</td>
+                <td>{{ 'Successful authenticated QR' if record.token_id else 'Legacy record (unverified)' }}</td>
+                <td>{{ record.checked_in_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                <td>
+                  <form method="post" action="{{ url_for('student.request_attendance_correction', record_id=record.id) }}" class="correction-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+                    <label class="visually-hidden" for="correction-reason-{{ record.id }}">Correction reason</label>
+                    <input id="correction-reason-{{ record.id }}" type="text" name="reason" maxlength="500" placeholder="Reason" required />
+                    <button class="secondary-btn" type="submit">Request correction</button>
+                  </form>
+                </td>
+              </tr>
+            {% else %}
+              <tr><td colspan="8">No attendance records yet.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if correction_requests %}
+        <h4>Correction requests</h4>
+        <ul class="request-list">
+          {% for correction in correction_requests %}
+            <li>Record {{ correction.record_id }} · {{ correction.status|title }} · {{ correction.created_at.strftime('%Y-%m-%d %H:%M') }} UTC</li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+      {% if security_events %}
+        <h4>Recent scan attempts</h4>
+        <ul class="request-list">
+          {% for event in security_events %}
+            <li>{{ event.event_type|replace('_', ' ')|title }} · {{ event.created_at.strftime('%Y-%m-%d %H:%M') }} UTC</li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    </div>
+
+    <div class="panel-card security-panel">
+      <h3>{{ icons.icon('shield-check') }}Privacy &amp; security</h3>
+      {% if security_protected %}
+        <p class="security-status security-status-ok">Account Protected: HTTPS, secure session cookie, scrypt password hash, and two-factor authentication are active.</p>
+      {% else %}
+        <p class="security-status security-status-alert">Account protection is incomplete. This indicator is not shown as protected unless HTTPS, a secure session cookie, scrypt hashing, and two-factor authentication are all active.</p>
+      {% endif %}
+      <ul>
+        <li>Attendance is recorded only after an authenticated, short-lived QR session is cryptographically verified.</li>
+        <li>QR tokens are signed, expire quickly, and are bound to a unique nonce to prevent replay.</li>
+        <li>Role-based access limits student attendance views to the signed-in student's own records.</li>
+        <li>Sessions expire according to the configured server-side lifetime; HTTPS must be enabled in deployment.</li>
+      </ul>
+    </div>
+  </section>
+</div>
+{% endblock %}

@@ -1,0 +1,184 @@
+{% extends 'base.html' %}
+{% import 'macros/icons.html' as icons %}
+
+{% block content %}
+<div class="dashboard">
+  <aside class="sidebar" aria-label="Faculty navigation">
+    <div class="sidebar-heading">
+      <a class="sidebar-brand" href="#overview">{{ icons.icon('qr-code') }}<span class="sidebar-copy"><strong>Privacy Attendance</strong><small>Faculty workspace</small></span></a>
+      <button class="sidebar-toggle" type="button" aria-label="Collapse navigation" aria-expanded="true" title="Collapse navigation">{{ icons.icon('chevron-left') }}</button>
+    </div>
+    <ul class="sidebar-nav">
+      <li><a class="sidebar-link" href="{{ url_for('auth.profile') }}" data-tooltip="My Profile" aria-label="My Profile">{{ icons.icon('user-round') }}<span class="nav-label">My Profile</span></a></li>
+      <li><a class="sidebar-link" href="#subjects" data-tooltip="My subjects" aria-label="My subjects">{{ icons.icon('book-open') }}<span class="nav-label">My subjects</span></a></li>
+      <li><a class="sidebar-link" href="#classes" data-tooltip="My Classes" aria-label="My Classes">{{ icons.icon('school') }}<span class="nav-label">My Classes</span></a></li>
+      <li><a class="sidebar-link" href="#students" data-tooltip="Student List" aria-label="Student List">{{ icons.icon('users') }}<span class="nav-label">Student List</span></a></li>
+      <li><a class="sidebar-link" href="#create-session" data-tooltip="Mark Attendance" aria-label="Mark Attendance">{{ icons.icon('calendar-plus') }}<span class="nav-label">Mark Attendance</span></a></li>
+      <li><a class="sidebar-link" href="#sessions" data-tooltip="Attendance History & Reports" aria-label="Attendance History & Reports">{{ icons.icon('history') }}<span class="nav-label">Attendance History & Reports</span></a></li>
+    </ul>
+    <div class="sidebar-footer">
+      <form method="post" action="{{ url_for('auth.logout') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+        <button class="sidebar-link logout-link" type="submit" data-tooltip="Logout" aria-label="Logout" title="Logout">{{ icons.icon('log-out') }}<span class="nav-label">Logout</span></button>
+      </form>
+    </div>
+  </aside>
+
+  <section class="content-panel" id="overview">
+    <h1>{{ icons.icon('book-open') }}Faculty workspace</h1>
+
+    <div class="stats-grid">
+      <div class="stat-card">{{ icons.icon('book-open') }}<div><span>Assigned subjects</span><strong>{{ stats.subjects }}</strong></div></div>
+      <div class="stat-card">{{ icons.icon('graduation-cap') }}<div><span>Total students</span><strong>{{ stats.students }}</strong></div></div>
+      <div class="stat-card">{{ icons.icon('radio') }}<div><span>Active sessions</span><strong>{{ stats.active_sessions }}</strong></div></div>
+      <div class="stat-card">{{ icons.icon('users') }}<div><span>Students present</span><strong>{{ stats.students_present }}</strong></div></div>
+      <div class="stat-card">{{ icons.icon('chart-no-axes-combined') }}<div><span>Attendance percentage</span><strong>{{ stats.attendance_percentage }}%</strong></div></div>
+    </div>
+
+    <div class="panel-card subject-panel" id="subjects">
+      <h3>{{ icons.icon('book-open') }}My Subjects</h3>
+      {% if assignments %}
+        <ul class="subject-list">
+          {% for assignment in assignments %}
+            <li>{{ assignment.subject.name }} <span class="muted">{{ assignment.subject.code }}</span></li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="muted">No subjects are assigned yet.</p>
+      {% endif %}
+    </div>
+
+    <div class="panel-card" id="classes">
+      <h3>{{ icons.icon('school') }}My Classes</h3>
+      {% if assignments %}
+        <ul class="subject-list">
+          {% for assignment in assignments %}
+            <li>{{ assignment.subject.course.name }} <span class="muted">{{ assignment.subject.code }}</span></li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="muted">No classes are available for your assigned subjects.</p>
+      {% endif %}
+    </div>
+
+    <div class="panel-card" id="students">
+      <h3>{{ icons.icon('users') }}Students in assigned subjects</h3>
+      <table>
+        <thead><tr><th>Student</th><th>Student number</th><th>Department</th></tr></thead>
+        <tbody>
+          {% for student in enrolled_students %}
+            <tr><td>{{ student.user.full_name }}</td><td>{{ student.student_number or 'Not provided' }}</td><td>{{ student.department.name if student.department else 'Not assigned' }}</td></tr>
+          {% else %}
+            <tr><td colspan="3" class="muted">No students are enrolled in your assigned subjects.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card-grid">
+      <div class="panel-card" id="create-session">
+        <h3>{{ icons.icon('calendar-plus') }}Create Attendance Session</h3>
+        <form method="post" action="{{ url_for('faculty.create_session') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+          <div class="field"><label>Title</label><input type="text" name="title" maxlength="140" required /></div>
+          <div class="field"><label>Subject</label>
+            <select name="subject_id">
+              {% for assignment in assignments %}
+                <option value="{{ assignment.subject_id }}">{{ assignment.subject.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <button type="submit" class="primary-btn">{{ icons.icon('calendar-plus') }}Create Session</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="panel-card" id="sessions">
+      <h3>{{ icons.icon('clipboard-check') }}Attendance history and reports</h3>
+      <form method="get" action="{{ url_for('faculty.dashboard', _anchor='sessions') }}" class="audit-filters">
+        <div class="field"><label for="faculty-search">Search student</label><input id="faculty-search" name="search" value="{{ session_filters.search }}" maxlength="100" placeholder="Name or register number" /></div>
+        <div class="field"><label for="faculty-subject">Subject</label><select id="faculty-subject" name="subject_id"><option value="">All assigned subjects</option>{% for assignment in assignments %}<option value="{{ assignment.subject_id }}" {{ 'selected' if session_filters.subject_id == assignment.subject_id|string else '' }}>{{ assignment.subject.name }}</option>{% endfor %}</select></div>
+        <div class="field"><label for="faculty-from">From</label><input id="faculty-from" type="date" name="start_date" value="{{ session_filters.start_date }}" /></div>
+        <div class="field"><label for="faculty-through">Through</label><input id="faculty-through" type="date" name="end_date" value="{{ session_filters.end_date }}" /></div>
+        <button class="primary-btn" type="submit">{{ icons.icon('filter') }}Filter</button>
+        <a class="secondary-btn" href="{{ url_for('faculty.export_attendance_csv', search=session_filters.search, subject_id=session_filters.subject_id, start_date=session_filters.start_date, end_date=session_filters.end_date) }}">{{ icons.icon('download') }}Download CSV</a>
+      </form>
+      <table>
+        <thead><tr><th>Title</th><th>Subject</th><th>Status</th><th>Attendance details</th><th>Present</th><th>QR / Controls</th></tr></thead>
+        <tbody>
+          {% for session in sessions %}
+            <tr>
+              <td>{{ session.title }}</td>
+              <td>{{ session.subject.name }}</td>
+              <td>{{ session.status }}</td>
+              <td>
+                {% if session.attendance_records %}
+                  {% for record in session.attendance_records %}
+                    <div>{{ record.student.user.full_name }} ({{ record.status }})</div>
+                  {% endfor %}
+                {% else %}
+                  <span class="muted">No check-ins</span>
+                {% endif %}
+              </td>
+              <td>
+                <strong>{{ session.attendance_records|length }} present</strong>
+              </td>
+              <td class="session-actions">
+                {% if session.status == 'active' %}
+                  <button class="secondary-btn generate-qr" type="button" data-session-id="{{ session.id }}">{{ icons.icon('qr-code') }}Generate QR</button>
+                  <span class="muted">Session active</span>
+                {% elif session.status == 'closed' %}
+                  <span class="muted">Ready to finalize</span>
+                {% else %}
+                  <span class="muted">{{ session.status|capitalize }}</span>
+                {% endif %}
+                {% if session.status in ['active', 'closed'] %}
+                  <form method="post" action="{{ url_for('faculty.toggle_session', session_id=session.id) }}" {% if session.status == 'closed' %}data-confirm="Finalize this session? It will count toward attendance percentages and cannot be reopened."{% endif %}>
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+                    {% if session.status == 'active' %}
+                      <button class="primary-btn" type="submit">{{ icons.icon('square') }}Close session</button>
+                    {% else %}
+                      <button class="primary-btn" type="submit">{{ icons.icon('check') }}Finalize session</button>
+                    {% endif %}
+                  </form>
+                  <form method="post" action="{{ url_for('faculty.cancel_session', session_id=session.id) }}" data-confirm="Cancel this session? It will not count toward attendance percentages.">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+                    <button class="secondary-btn" type="submit">Cancel</button>
+                  </form>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div id="qr-output" class="qr-box" aria-live="polite"></div>
+    </div>
+
+    <div class="panel-card" id="corrections">
+      <h3>{{ icons.icon('file-pen-line') }}Pending attendance corrections</h3>
+      <table>
+        <thead><tr><th>Student</th><th>Session</th><th>Reason</th><th>Requested</th><th>Review</th></tr></thead>
+        <tbody>
+          {% for correction in correction_requests %}
+          <tr>
+            <td>{{ correction.record.student.user.full_name }}</td>
+            <td>{{ correction.record.session.title }}</td>
+            <td>{{ correction.reason }}</td>
+            <td>{{ correction.created_at.strftime('%Y-%m-%d %H:%M') }} UTC</td>
+            <td>
+              <form method="post" action="{{ url_for('faculty.review_correction', correction_id=correction.id) }}" class="button-row">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+                <button class="primary-btn" type="submit" name="decision" value="approved">{{ icons.icon('check') }}Approve</button>
+                <button class="secondary-btn" type="submit" name="decision" value="rejected">Reject</button>
+              </form>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" class="muted">No pending correction requests.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+{% endblock %}

@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+{% import 'macros/icons.html' as icons %}
+
+{% block content %}
+<div class="dashboard">
+  <section class="content-panel">
+    <a href="{{ url_for('student.dashboard') }}" class="secondary-btn">{{ icons.icon('arrow-left') }}Back to dashboard</a>
+    <h1>{{ icons.icon('book-open') }}{{ subject.name }} <span class="muted">({{ subject.code }})</span></h1>
+    <p>Faculty: {{ faculty_names }}</p>
+    <div class="stats-grid">
+      <div class="stat-card">{{ icons.icon('calendar-clock') }}<div><span>Total classes</span><strong>{{ history|length }}</strong></div></div>
+      <div class="stat-card">{{ icons.icon('clipboard-check') }}<div><span>Attended</span><strong>{{ attended }}</strong></div></div>
+      <div class="stat-card">{{ icons.icon('calendar-clock') }}<div><span>Absent</span><strong>{{ absent }}</strong></div></div>
+      <div class="stat-card">{{ icons.icon('chart-no-axes-combined') }}<div><span>Attendance</span><strong>{{ percentage }}%</strong></div></div>
+    </div>
+    <div class="panel-card">
+      <h3>{{ icons.icon('history') }}Complete date-wise attendance history</h3>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>Date</th><th>Class / period</th><th>Faculty</th><th>Status</th><th>Marked at (UTC)</th><th>QR verification</th></tr></thead>
+          <tbody>
+            {% for item in history %}
+              {% set session = item.session %}
+              {% set record = item.record %}
+              <tr>
+                <td>{{ (session.start_time or session.created_at).strftime('%Y-%m-%d') }}</td>
+                <td>{{ session.title }}</td>
+                <td>{{ session.faculty.user.full_name if session.faculty and session.faculty.user else 'Not assigned' }}</td>
+                <td>{{ item.status }}</td>
+                <td>{{ record.checked_in_at.strftime('%Y-%m-%d %H:%M') if record else '-' }}</td>
+                <td>{{ 'Successful authenticated QR' if record and record.token_id else ('Legacy record' if record else 'Not applicable') }}</td>
+              </tr>
+            {% else %}
+              <tr><td colspan="6">No finalized sessions are available for this subject.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}

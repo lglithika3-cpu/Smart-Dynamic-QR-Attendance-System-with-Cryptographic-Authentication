@@ -1,0 +1,9 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<section class="content-panel">
+  <h1>Form expired</h1>
+  <p>{{ message }}</p>
+  <a class="primary-btn" href="{{ url_for('index') }}">Return to your workspace</a>
+</section>
+{% endblock %}

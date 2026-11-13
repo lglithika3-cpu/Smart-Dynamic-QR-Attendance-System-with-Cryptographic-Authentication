@@ -1,0 +1,77 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="auth-layout">
+  <section class="auth-visual" aria-label="Students studying together in a campus library">
+    <img
+      class="auth-visual-image"
+      src="{{ url_for('static', filename='images/login-campus.jpg') }}"
+      data-fallback-src="{{ url_for('static', filename='images/login-study-fallback.jpg') }}"
+      alt="College students working together in a library"
+      fetchpriority="high"
+    />
+    <div class="auth-visual-copy">
+      <p class="auth-eyebrow">ACADEMIC ATTENDANCE PLATFORM</p>
+      <h1>Smart Dynamic Attendance System</h1>
+      <p>Secure and Efficient Attendance Management</p>
+    </div>
+  </section>
+
+  <section class="auth-form-panel" aria-labelledby="login-title">
+    <div class="auth-card">
+      <p class="auth-form-eyebrow">{{ 'STUDENT REGISTRATION' if register_view else 'WELCOME BACK' }}</p>
+      <h2 id="login-title">{{ 'Create student account' if register_view else 'Sign in to continue' }}</h2>
+      <p class="muted">{{ 'Registration requires administrator approval.' if register_view else 'Sign in using your registered email or institutional ID. Save your login details in a secure password manager.' }}</p>
+
+    <form method="post" novalidate>
+      {{ form.hidden_tag() }}
+
+      {% if register_view %}
+        <div class="field">
+          {{ form.full_name.label }}
+          {{ form.full_name() }}
+        </div>
+      {% endif %}
+
+      <div class="field">
+        {{ form.email.label }}
+        {{ form.email(autocomplete="username", placeholder="Email or institutional ID", required=true) }}
+        {% for error in form.email.errors %}<span class="field-error">{{ error }}</span>{% endfor %}
+      </div>
+
+      <div class="field">
+        {{ form.password.label }}
+        {{ form.password(autocomplete="current-password", required=true) }}
+        {% for error in form.password.errors %}<span class="field-error">{{ error }}</span>{% endfor %}
+      </div>
+
+      {% if register_view %}
+        <div class="field">
+          {{ form.confirm_password.label }}
+          {{ form.confirm_password() }}
+        </div>
+      {% endif %}
+
+      <button class="primary-btn auth-submit" type="submit">
+        {{ 'Create account' if register_view else 'Sign in' }}
+      </button>
+    </form>
+
+    {% if not register_view %}
+      <div class="auth-link-row">
+        <a href="{{ url_for('auth.request_password_reset') }}">Forgot password?</a>
+      </div>
+      <div class="auth-link-row">
+        <span>Need an account?</span>
+        <a href="{{ url_for('auth.register') }}">Register as student</a>
+      </div>
+    {% else %}
+      <div class="auth-link-row">
+        <span>Already registered?</span>
+        <a href="{{ url_for('auth.login') }}">Back to login</a>
+      </div>
+    {% endif %}
+    </div>
+  </section>
+</div>
+{% endblock %}

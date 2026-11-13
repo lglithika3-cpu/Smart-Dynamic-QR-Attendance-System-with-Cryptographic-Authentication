@@ -1,0 +1,419 @@
+{% extends 'base.html' %}
+{% import 'macros/icons.html' as icons %}
+
+{% block content %}
+<div class="dashboard">
+  <aside class="sidebar" aria-label="Admin navigation">
+    <div class="sidebar-heading">
+      <a class="sidebar-brand" href="#overview">{{ icons.icon('qr-code') }}<span class="sidebar-copy"><strong>Privacy Attendance</strong><small>Admin workspace</small></span></a>
+      <button class="sidebar-toggle" type="button" aria-label="Collapse navigation" aria-expanded="true" title="Collapse navigation">{{ icons.icon('chevron-left') }}</button>
+    </div>
+    <ul class="sidebar-nav">
+      <li><a class="sidebar-link active" href="#students" data-tooltip="Student Management" aria-label="Student Management">{{ icons.icon('graduation-cap') }}<span class="nav-label">Student Management</span></a></li>
+      <li><a class="sidebar-link" href="#faculty" data-tooltip="Faculty Management" aria-label="Faculty Management">{{ icons.icon('users') }}<span class="nav-label">Faculty Management</span></a></li>
+      <li><a class="sidebar-link" href="#subjects" data-tooltip="Subject Management" aria-label="Subject Management">{{ icons.icon('book-open') }}<span class="nav-label">Subject Management</span></a></li>
+      <li><a class="sidebar-link" href="#faculty-assignment" data-tooltip="Faculty-Subject Assignment" aria-label="Faculty-Subject Assignment">{{ icons.icon('user-check') }}<span class="nav-label">Faculty-Subject Assignment</span></a></li>
+      <li><a class="sidebar-link" href="#classes" data-tooltip="Class Management" aria-label="Class Management">{{ icons.icon('building-2') }}<span class="nav-label">Class Management</span></a></li>
+      <li><a class="sidebar-link" href="#attendance-reports" data-tooltip="Attendance Reports" aria-label="Attendance Reports">{{ icons.icon('chart-no-axes-combined') }}<span class="nav-label">Attendance Reports</span></a></li>
+      <li><a class="sidebar-link" href="#announcements" data-tooltip="Announcements" aria-label="Announcements">{{ icons.icon('bell') }}<span class="nav-label">Announcements</span></a></li>
+      <li><a class="sidebar-link" href="{{ url_for('auth.profile') }}" data-tooltip="Profile" aria-label="Profile">{{ icons.icon('user-round') }}<span class="nav-label">Profile</span></a></li>
+      <li>
+        {% if config.APP_BACKUP_SUPPORTED %}
+          <form method="post" action="{{ url_for('admin.create_backup') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+            <button class="sidebar-link" type="submit" data-tooltip="Database backup" aria-label="Database backup" title="Database backup">{{ icons.icon('database-backup') }}<span class="nav-label">Database backup</span></button>
+          </form>
+        {% else %}
+          <span class="sidebar-link muted" title="Use the MySQL provider's backup controls">{{ icons.icon('database-backup') }}<span class="nav-label">MySQL provider backups</span></span>
+        {% endif %}
+      </li>
+    </ul>
+    <div class="sidebar-footer">
+      <form method="post" action="{{ url_for('auth.logout') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+        <button class="sidebar-link logout-link" type="submit" data-tooltip="Logout" aria-label="Logout" title="Logout">{{ icons.icon('log-out') }}<span class="nav-label">Logout</span></button>
+      </form>
+    </div>
+  </aside>
+
+  <section class="content-panel" id="overview">
+    <h1>{{ icons.icon('building-2') }}Institution management</h1>
+    <div class="stats-grid">
+      <div class="stat-card">{{ icons.icon('users') }}<div><span>Total Users</span><strong>{{ stats.users }}</strong></div></div>
+      <div class="stat-card">{{ icons.icon('graduation-cap') }}<div><span>Students</span><strong>{{ stats.students }}</strong></div></div>
+      <div class="stat-card">{{ icons.icon('users') }}<div><span>Faculty</span><strong>{{ stats.faculty }}</strong></div></div>
+      <div class="stat-card">{{ icons.icon('user-check') }}<div><span>Administrators</span><strong>{{ stats.admins }}</strong></div></div>
+      <div class="stat-card">{{ icons.icon('calendar-clock') }}<div><span>Sessions</span><strong>{{ stats.sessions }}</strong></div></div>
+    </div>
+
+    <div class="panel-card" id="announcements">
+      <h3>{{ icons.icon('bell') }}Attendance announcements</h3>
+      <form method="post" action="{{ url_for('admin.create_announcement') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+        <div class="profile-grid">
+          <div class="field"><label for="announcement-title">Title</label><input id="announcement-title" name="title" maxlength="120" required /></div>
+          <div class="field"><label for="announcement-start">Start (UTC)</label><input id="announcement-start" name="starts_at" type="datetime-local" /></div>
+          <div class="field"><label for="announcement-end">End (UTC, optional)</label><input id="announcement-end" name="ends_at" type="datetime-local" /></div>
+          <div class="field profile-field-wide"><label for="announcement-message">Message</label><textarea id="announcement-message" name="message" maxlength="2000" rows="3" required></textarea></div>
+        </div>
+        <button class="primary-btn" type="submit">{{ icons.icon('plus') }}Publish announcement</button>
+      </form>
+      <h4>Recent announcements</h4>
+      <ul class="request-list">
+        {% for announcement in announcements %}
+          <li><strong>{{ announcement.title }}</strong> · {{ announcement.starts_at.strftime('%Y-%m-%d %H:%M UTC') }}{% if announcement.ends_at %} through {{ announcement.ends_at.strftime('%Y-%m-%d %H:%M UTC') }}{% endif %} · {{ announcement.message }}</li>
+        {% else %}
+          <li>No announcements have been published.</li>
+        {% endfor %}
+      </ul>
+    </div>
+
+    <div class="card-grid">
+      <div class="panel-card" id="classes">
+        <h3>{{ icons.icon('building-2') }}Create Department</h3>
+        <form method="post" action="{{ url_for('admin.create_department') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+          <div class="field"><label>Name</label><input type="text" name="name" required /></div>
+          <div class="field"><label>Code</label><input type="text" name="code" required /></div>
+          <button type="submit" class="primary-btn">{{ icons.icon('plus') }}Add Department</button>
+        </form>
+      </div>
+
+      <div class="panel-card" id="subjects">
+        <h3>{{ icons.icon('school') }}Create Course</h3>
+        <form method="post" action="{{ url_for('admin.create_course') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+          <div class="field"><label>Name</label><input type="text" name="name" required /></div>
+          <div class="field"><label>Code</label><input type="text" name="code" required /></div>
+          <div class="field"><label>Department</label>
+            <select name="department_id">
+              {% for department in departments %}
+                <option value="{{ department.id }}">{{ department.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <button type="submit" class="primary-btn">{{ icons.icon('plus') }}Add Course</button>
+        </form>
+        <h4>Enroll student in a subject</h4>
+        <form method="post" action="{{ url_for('admin.enroll_student') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+          <div class="field"><label for="enroll-student">Student</label>
+            <select id="enroll-student" name="student_id" required>
+              {% for user in users if user.role == 'student' and user.student_profile %}
+                <option value="{{ user.student_profile.id }}">{{ user.full_name }} ({{ user.email }})</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="field"><label for="enroll-subject">Subject</label>
+            <select id="enroll-subject" name="subject_id" required>
+              {% for subject in subjects %}<option value="{{ subject.id }}">{{ subject.name }} ({{ subject.code }})</option>{% endfor %}
+            </select>
+          </div>
+          <button type="submit" class="primary-btn">Enroll student</button>
+        </form>
+      </div>
+
+      <div class="panel-card">
+        <h3>{{ icons.icon('book-open') }}Create Subject</h3>
+        <form method="post" action="{{ url_for('admin.create_subject') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+          <div class="field"><label>Name</label><input type="text" name="name" required /></div>
+          <div class="field"><label>Code</label><input type="text" name="code" required /></div>
+          <div class="field"><label>Course</label>
+            <select name="course_id">
+              {% for course in courses %}
+                <option value="{{ course.id }}">{{ course.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <button type="submit" class="primary-btn">{{ icons.icon('plus') }}Add Subject</button>
+        </form>
+      </div>
+
+      <div class="panel-card" id="faculty-assignment">
+        <h3>{{ icons.icon('user-check') }}Assign Faculty to Subject</h3>
+        <form method="post" action="{{ url_for('admin.assign_subject') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+          <div class="field"><label for="assignment-faculty">Faculty member</label>
+            <select id="assignment-faculty" name="faculty_id" required>
+              {% for user in users if user.role == 'faculty' and user.faculty_profile %}
+                <option value="{{ user.faculty_profile.id }}">{{ user.full_name }} ({{ user.email }})</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="field"><label for="assignment-subject">Subject</label>
+            <select id="assignment-subject" name="subject_id" required>
+              {% for subject in subjects %}<option value="{{ subject.id }}">{{ subject.name }} ({{ subject.code }})</option>{% endfor %}
+            </select>
+          </div>
+          <button type="submit" class="primary-btn">Save assignment</button>
+        </form>
+      </div>
+
+      <div class="panel-card">
+        <h3>{{ icons.icon('users') }}Create Institutional Account</h3>
+        <p class="muted">Use the account email as the login username. Save the password when you create the account; passwords are stored securely and cannot be viewed later.</p>
+        <form method="post" action="{{ url_for('admin.create_user') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+          <div class="field"><label>Full name</label><input type="text" name="full_name" required /></div>
+          <div class="field"><label>Email</label><input type="email" name="email" required /></div>
+          <div class="field"><label>Password</label><input type="password" name="password" required /></div>
+          <div class="field"><label>Role</label>
+            <select name="role">
+              <option value="student">Student</option>
+              <option value="faculty">Faculty</option>
+            </select>
+          </div>
+          <div class="field"><label>Department</label>
+            <select name="department_id">
+              {% for department in departments %}
+                <option value="{{ department.id }}">{{ department.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <button type="submit" class="primary-btn">{{ icons.icon('save') }}Save User</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="panel-card" id="login-credentials">
+      <h3>{{ icons.icon('user-round') }}Login credentials</h3>
+      <p class="muted">These student and faculty credentials are examples for the demo accounts created by the demo-data seeder. Admin login uses the configured admin email and password; the password cannot be recovered from the app.</p>
+      <table>
+        <thead><tr><th>Role</th><th>Username</th><th>Password</th></tr></thead>
+        <tbody>
+          <tr><td>Student (demo)</td><td>demo.student001@example.com</td><td>Student123!</td></tr>
+          <tr><td>Faculty (demo)</td><td>faculty01@example.com</td><td>Faculty123!</td></tr>
+          <tr><td>Admin</td><td>{{ current_user.email }}</td><td>Configured as ADMIN_PASSWORD</td></tr>
+        </tbody>
+      </table>
+      <p class="muted">The admin password is the value set during setup in the <code>.env</code> file. Do not use demo credentials in production.</p>
+    </div>
+
+    <div class="panel-card" id="accounts">
+      <h3>{{ icons.icon('user-check') }}Account Review</h3>
+      <table>
+        <thead><tr><th>Name</th><th>Role</th><th>Email</th><th>Department / student ID</th><th>Status</th><th>Action</th></tr></thead>
+          {% for role in ['student', 'faculty', 'admin'] %}
+          <tbody id="{{ 'students' if role == 'student' else 'faculty' if role == 'faculty' else 'administrators' }}" data-dashboard-topic>
+          <tr><td colspan="6" class="account-group"><strong>{{ 'Student Management' if role == 'student' else 'Faculty Management' if role == 'faculty' else 'Administrators' }}</strong></td></tr>
+          {% for user in users if user.role == role %}
+          <tr>
+            <td>
+              {% if user.id != current_user.id %}
+                <form id="edit-user-{{ user.id }}" method="post" action="{{ url_for('admin.edit_user', user_id=user.id) }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+                  <label class="visually-hidden" for="user-name-{{ user.id }}">Name for {{ user.email }}</label>
+                  <input id="user-name-{{ user.id }}" name="full_name" maxlength="255" value="{{ user.full_name }}" required />
+                </form>
+              {% else %}
+                {{ user.full_name }}
+              {% endif %}
+            </td>
+            <td>{{ user.role }}</td>
+            <td>
+              {% if user.id != current_user.id %}
+                <label class="visually-hidden" for="user-email-{{ user.id }}">Email for {{ user.full_name }}</label>
+                <input id="user-email-{{ user.id }}" form="edit-user-{{ user.id }}" type="email" name="email" maxlength="255" value="{{ user.email }}" required />
+              {% else %}
+                {{ user.email }}
+              {% endif %}
+            </td>
+            <td>
+              {% if user.id != current_user.id and user.student_profile %}
+                <label class="visually-hidden" for="user-department-{{ user.id }}">Department for {{ user.full_name }}</label>
+                <select id="user-department-{{ user.id }}" form="edit-user-{{ user.id }}" name="department_id">
+                  <option value="">No department</option>
+                  {% for department in departments %}
+                    <option value="{{ department.id }}" {{ 'selected' if user.student_profile.department_id == department.id else '' }}>{{ department.name }}</option>
+                  {% endfor %}
+                </select>
+                <label class="visually-hidden" for="user-number-{{ user.id }}">Student number for {{ user.full_name }}</label>
+                <input id="user-number-{{ user.id }}" form="edit-user-{{ user.id }}" name="student_number" maxlength="60" value="{{ user.student_profile.student_number or '' }}" placeholder="Student number" />
+                <label class="visually-hidden" for="user-year-{{ user.id }}">Year for {{ user.full_name }}</label>
+                <input id="user-year-{{ user.id }}" form="edit-user-{{ user.id }}" name="year" maxlength="20" value="{{ user.student_profile.year or '' }}" placeholder="Year" />
+              {% elif user.id != current_user.id and user.faculty_profile %}
+                <label class="visually-hidden" for="user-department-{{ user.id }}">Department for {{ user.full_name }}</label>
+                <select id="user-department-{{ user.id }}" form="edit-user-{{ user.id }}" name="department_id">
+                  <option value="">No department</option>
+                  {% for department in departments %}
+                    <option value="{{ department.id }}" {{ 'selected' if user.faculty_profile.department_id == department.id else '' }}>{{ department.name }}</option>
+                  {% endfor %}
+                </select>
+              {% else %}
+                {{ user.student_profile.department.name if user.student_profile and user.student_profile.department else (user.faculty_profile.department.name if user.faculty_profile and user.faculty_profile.department else '—') }}
+              {% endif %}
+            </td>
+            <td>{{ 'Suspended' if not user.is_active else ('Approved' if user.student_profile and user.student_profile.approved else 'Active') }}</td>
+            <td>
+              {% if user.id != current_user.id %}
+                <button class="primary-btn" type="submit" form="edit-user-{{ user.id }}">{{ icons.icon('save') }}Save changes</button>
+              {% endif %}
+              {% if user.role == 'student' and user.student_profile and not user.student_profile.approved %}
+                <form method="post" action="{{ url_for('admin.approve_student', user_id=user.id) }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+                  <button class="primary-btn" type="submit">{{ icons.icon('check') }}Approve</button>
+                </form>
+              {% endif %}
+              {% if user.id != current_user.id %}
+                <form method="post" action="{{ url_for('admin.update_user_status', user_id=user.id) }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+                  {% if user.is_active %}
+                    <input type="hidden" name="status" value="suspended" />
+                    <button class="secondary-btn" type="submit">Suspend account</button>
+                  {% else %}
+                    <input type="hidden" name="status" value="active" />
+                    <button class="primary-btn" type="submit">Reactivate account</button>
+                  {% endif %}
+                </form>
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="6" class="muted">No {{ role }} accounts.</td></tr>
+          {% endfor %}
+          </tbody>
+          {% endfor %}
+      </table>
+    </div>
+
+    <div class="panel-card" id="academics">
+      <h3>{{ icons.icon('school') }}Academic Setup</h3>
+      <div class="split-grid">
+        <div>
+          <h4>Departments</h4>
+          <ul>
+            {% for department in departments %}<li>{{ department.name }} ({{ department.code }})</li>{% endfor %}
+          </ul>
+        </div>
+        <div>
+          <h4>Courses</h4>
+          <ul>
+            {% for course in courses %}<li>{{ course.name }} ({{ course.code }})</li>{% endfor %}
+          </ul>
+        </div>
+        <div>
+          <h4>Subjects</h4>
+          <ul>
+            {% for subject in subjects %}<li>{{ subject.name }} ({{ subject.code }})</li>{% endfor %}
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel-card" id="sessions">
+      <h3>{{ icons.icon('calendar-clock') }}Recent Sessions</h3>
+      <table>
+        <thead><tr><th>Title</th><th>Subject</th><th>Status</th><th>Time</th></tr></thead>
+        <tbody>
+          {% for session in sessions %}
+          <tr>
+            <td>{{ session.title }}</td>
+            <td>{{ session.subject.name }}</td>
+            <td>{{ session.status }}</td>
+            <td>{{ session.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="panel-card" id="attendance-reports">
+      <h3>{{ icons.icon('chart-no-axes-combined') }}Attendance report and audit export</h3>
+      <form method="get" action="{{ url_for('admin.export_attendance_csv') }}" class="audit-filters">
+        <div class="field"><label for="report-subject">Subject</label><select id="report-subject" name="subject_id"><option value="">All subjects</option>{% for subject in subjects %}<option value="{{ subject.id }}">{{ subject.name }}</option>{% endfor %}</select></div>
+        <div class="field"><label for="report-student">Student</label><select id="report-student" name="student_id"><option value="">All students</option>{% for user in users if user.role == 'student' and user.student_profile %}<option value="{{ user.student_profile.id }}">{{ user.full_name }}</option>{% endfor %}</select></div>
+        <div class="field"><label for="report-faculty">Faculty</label><select id="report-faculty" name="faculty_id"><option value="">All faculty</option>{% for user in users if user.role == 'faculty' and user.faculty_profile %}<option value="{{ user.faculty_profile.id }}">{{ user.full_name }}</option>{% endfor %}</select></div>
+        <div class="field"><label for="report-start">From</label><input id="report-start" type="date" name="start_date" /></div>
+        <div class="field"><label for="report-end">Through</label><input id="report-end" type="date" name="end_date" /></div>
+        <button class="primary-btn" type="submit">{{ icons.icon('download') }}Download attendance CSV</button>
+      </form>
+      <p class="muted">CSV timestamps use UTC. Audit event reports remain available in Security monitoring.</p>
+    </div>
+
+    <div class="panel-card security-panel" id="security">
+      <h3>{{ icons.icon('history') }}Security monitoring</h3>
+      <p class="muted">Monitoring indicators only; this is not a complete intrusion-detection system.</p>
+      <p class="security-status {{ 'security-status-alert' if stats.security_alert else 'security-status-ok' }}" role="status">
+        {{ 'Review recommended: a monitored count reached the configured threshold of ' ~ stats.alert_threshold ~ '.' if stats.security_alert else 'No monitored event count has reached the configured threshold of ' ~ stats.alert_threshold ~ '.' }}
+      </p>
+      <div class="stats-grid security-stats">
+        <div class="stat-card">{{ icons.icon('users') }}<div><span>Registered users</span><strong>{{ stats.users }}</strong></div></div>
+        <div class="stat-card">{{ icons.icon('calendar-clock') }}<div><span>Attendance sessions</span><strong>{{ stats.sessions }}</strong></div></div>
+        <div class="stat-card">{{ icons.icon('user-check') }}<div><span>Successful logins</span><strong>{{ stats.login_success }}</strong></div></div>
+        <div class="stat-card">{{ icons.icon('circle-help') }}<div><span>Failed logins</span><strong>{{ stats.login_failure }}</strong></div></div>
+        <div class="stat-card">{{ icons.icon('scan-qr-code') }}<div><span>Invalid QR attempts</span><strong>{{ stats.qr_invalid }}</strong></div></div>
+        <div class="stat-card">{{ icons.icon('calendar-clock') }}<div><span>Expired QR attempts</span><strong>{{ stats.qr_expired }}</strong></div></div>
+        <div class="stat-card">{{ icons.icon('users') }}<div><span>Duplicate submissions</span><strong>{{ stats.attendance_duplicates }}</strong></div></div>
+        <div class="stat-card">{{ icons.icon('qr-code') }}<div><span>Active QR tokens</span><strong>{{ stats.qr_active }}</strong></div></div>
+        <div class="stat-card">{{ icons.icon('square') }}<div><span>Revoked QR tokens</span><strong>{{ stats.qr_revoked }}</strong></div></div>
+      </div>
+      <form method="get" action="{{ url_for('admin.dashboard', _anchor='security') }}" class="audit-filters">
+        <div class="field"><label for="audit-search">Search events</label><input id="audit-search" name="search" value="{{ audit_filters.search }}" maxlength="100" /></div>
+        <div class="field"><label for="audit-role">Role</label><select id="audit-role" name="role"><option value="">All roles</option>{% for role in ['admin', 'faculty', 'student'] %}<option value="{{ role }}" {{ 'selected' if audit_filters.role == role else '' }}>{{ role|title }}</option>{% endfor %}</select></div>
+        <div class="field"><label for="audit-start">From</label><input id="audit-start" type="date" name="start_date" value="{{ audit_filters.start_date }}" /></div>
+        <div class="field"><label for="audit-end">Through</label><input id="audit-end" type="date" name="end_date" value="{{ audit_filters.end_date }}" /></div>
+        <button class="primary-btn" type="submit">{{ icons.icon('filter') }}Apply filters</button>
+        <a class="secondary-btn" href="{{ url_for('admin.export_audit_csv', role=audit_filters.role, search=audit_filters.search, start_date=audit_filters.start_date, end_date=audit_filters.end_date) }}">{{ icons.icon('download') }}Export CSV</a>
+      </form>
+      <table>
+        <thead><tr><th>Timestamp (UTC)</th><th>Role</th><th>Event</th><th>Result</th><th>Description</th><th>Request ID</th></tr></thead>
+        <tbody>
+          {% for event in audit_events %}
+          <tr>
+            <td>{{ event.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+            <td>{{ event.role or 'Unknown' }}</td>
+            <td>{{ event.event_type }}</td>
+            <td>{{ 'Success' if event.success else 'Failure' if event.success is not none else 'Recorded' }}</td>
+            <td>{{ event.details or '' }}</td>
+            <td>{{ event.correlation_id or '' }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="6" class="muted">No matching audit events.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <h4>Recent QR tokens</h4>
+      <table>
+        <thead><tr><th>Session</th><th>Issued (UTC)</th><th>Expires (UTC)</th><th>Status</th><th>Action</th></tr></thead>
+        <tbody>
+          {% for token in qr_tokens %}
+          <tr>
+            <td>{{ token.session.title }}</td>
+            <td>{{ token.issued_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+            <td>{{ token.expires_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+            <td>{{ 'Active' if token.is_active and token.expires_at > now else 'Revoked or expired' }}</td>
+            <td>
+              {% if token.is_active %}
+                <form method="post" action="{{ url_for('admin.revoke_qr_token', token_id=token.id) }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+                  <button class="secondary-btn" type="submit">{{ icons.icon('square') }}Revoke token</button>
+                </form>
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" class="muted">No QR tokens issued yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% if config.APP_BACKUP_SUPPORTED %}
+        <h4>Recent database backups</h4>
+        <table>
+          <thead><tr><th>Created (UTC)</th><th>Backup file</th><th>Status</th><th>Integrity</th></tr></thead>
+          <tbody>
+            {% for backup in backup_records %}
+            <tr><td>{{ backup.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td><td>{{ backup.filename }}</td><td>{{ backup.status|title }}</td><td>{{ backup.integrity_result or 'Not verified' }}</td></tr>
+            {% else %}
+            <tr><td colspan="4" class="muted">No backup records yet.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <h4>Database backups</h4>
+        <p class="muted">Manage MySQL backups and recovery with your cloud database provider.</p>
+      {% endif %}
+    </div>
+  </section>
+</div>
+{% endblock %}

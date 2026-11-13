@@ -1,0 +1,47 @@
+{% import 'macros/icons.html' as icons %}
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="csrf-token" content="{{ csrf_token() }}" />
+    <title>Smart Dynamic Attendance System</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+  </head>
+  <body>
+    {{ icons.sprite() }}
+    <header class="topbar">
+      <a class="brand" href="{{ url_for(current_user.get_dashboard_url()) if current_user.is_authenticated else url_for('auth.login') }}">
+        {{ icons.icon('qr-code') }}<span>Privacy Attendance</span>
+      </a>
+      <nav class="topbar-actions" aria-label="Account navigation">
+        {% if current_user.is_authenticated %}
+          <a href="{{ url_for('auth.profile') }}" aria-label="Profile" title="Profile">{{ icons.icon('user-round') }}<span>Profile</span></a>
+          <form method="post" action="{{ url_for('auth.logout') }}" class="topbar-logout">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+            <button type="submit" aria-label="Logout" title="Logout">{{ icons.icon('log-out') }}<span>Logout</span></button>
+          </form>
+        {% else %}
+          <a href="{{ url_for('auth.login') }}" aria-label="Login" title="Login">{{ icons.icon('user-round') }}<span>Login</span></a>
+        {% endif %}
+      </nav>
+    </header>
+
+    <main class="page-shell">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div class="flash-stack">
+            {% for category, message in messages %}
+              <div class="flash {{ category }}">{{ message }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+
+      {% block content %}{% endblock %}
+    </main>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    {% block scripts %}{% endblock %}
+  </body>
+</html>

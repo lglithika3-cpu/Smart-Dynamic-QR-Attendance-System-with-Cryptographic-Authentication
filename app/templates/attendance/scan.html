@@ -1,0 +1,25 @@
+{% extends 'base.html' %}
+{% import 'macros/icons.html' as icons %}
+
+{% block content %}
+<div class="auth-shell">
+  <div class="auth-card scan-card">
+    <h1>{{ icons.icon('scan-qr-code') }}Scan Attendance QR</h1>
+    <p class="muted">Allow camera access to scan the faculty QR code. Camera access requires HTTPS or localhost. If prompted, allow camera permission in your browser.</p>
+
+    <video id="qr-video" width="320" height="240" autoplay playsinline muted></video>
+    <canvas id="qr-canvas" width="320" height="240"></canvas>
+
+    <div class="button-row">
+      <button id="start-scan" class="primary-btn" type="button">{{ icons.icon('camera') }}Start Camera</button>
+      <button id="stop-scan" class="secondary-btn" type="button">{{ icons.icon('square') }}Stop</button>
+    </div>
+
+    <div id="scan-status" class="scan-status">Waiting for camera permission.</div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+{% endblock %}

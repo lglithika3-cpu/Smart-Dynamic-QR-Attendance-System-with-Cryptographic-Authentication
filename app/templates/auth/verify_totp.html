@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+  <section class="auth-shell">
+    <div class="auth-card" aria-labelledby="totp-heading">
+      <p class="auth-form-eyebrow">SECURE SIGN-IN</p>
+      <h2 id="totp-heading">Two-factor verification</h2>
+      <p class="muted">Enter the current six-digit code from your authenticator app. This step expires after five minutes.</p>
+      <form method="post" action="{{ url_for('auth.verify_totp') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+        <div class="field">
+          <label for="code">Authenticator code</label>
+          <input id="code" name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required autofocus />
+        </div>
+        <button class="primary-btn auth-submit" type="submit">Verify and sign in</button>
+      </form>
+    </div>
+  </section>
+{% endblock %}

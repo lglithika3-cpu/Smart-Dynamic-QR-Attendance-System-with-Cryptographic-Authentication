@@ -8,11 +8,14 @@ from app import create_app
 from app.extensions import db
 from app.config import _normalize_database_url
 from app.models.models import FacultyProfile, StudentEnrollment, StudentProfile, Subject, User
-from scripts.migrate_sqlite_to_mysql import copy_database_data
+from scripts.migrate_sqlite_to_database import (
+    _reset_postgresql_sequences,
+    copy_database_data,
+)
 from scripts.seed_demo_data import seed_demo_data
 
 
-def test_sqlite_to_mysql_copy_preserves_rows_and_leaves_migration_version_alone(tmp_path):
+def test_sqlite_to_database_copy_preserves_rows_and_leaves_migration_version_alone(tmp_path):
     source_engine = create_engine(f"sqlite:///{tmp_path / 'source.db'}")
     target_engine = create_engine(f"sqlite:///{tmp_path / 'target.db'}")
     metadata = MetaData()
@@ -51,7 +54,7 @@ def test_sqlite_to_mysql_copy_preserves_rows_and_leaves_migration_version_alone(
     target_engine.dispose()
 
 
-def test_sqlite_to_mysql_copy_refuses_nonempty_target(tmp_path):
+def test_sqlite_to_database_copy_refuses_nonempty_target(tmp_path):
     source_engine = create_engine(f"sqlite:///{tmp_path / 'source.db'}")
     target_engine = create_engine(f"sqlite:///{tmp_path / 'target.db'}")
     metadata = MetaData()
@@ -78,6 +81,62 @@ def test_sqlite_to_mysql_copy_refuses_nonempty_target(tmp_path):
 def test_mysql_database_url_uses_pymysql_driver():
     url = _normalize_database_url("mysql://user:password@db.example/app?charset=utf8mb4")
     assert url == "mysql+pymysql://user:password@db.example/app?charset=utf8mb4"
+
+
+def test_postgresql_database_url_uses_psycopg_and_tls():
+    url = _normalize_database_url("postgres://USER:PASSWORD@db.example/app")
+    assert url == (
+        "postgresql+psycopg://USER:PASSWORD@db.example/app?sslmode=require"
+    )
+
+
+def test_postgresql_database_url_uses_ca_verification():
+    url = _normalize_database_url(
+        "postgresql://USER:PASSWORD@db.example/app?sslmode=require",
+        ssl_ca="C:\\certs\\aiven-ca.pem",
+    )
+    assert "sslmode=verify-full" in url
+    assert "sslrootcert=C%3A%5Ccerts%5Caiven-ca.pem" in url
+
+
+def test_postgresql_sequence_is_advanced_after_import():
+    users = Table(
+        "users",
+        MetaData(),
+        Column("id", Integer, primary_key=True),
+    )
+
+    class Result:
+        def __init__(self, value):
+            self.value = value
+
+        def scalar_one_or_none(self):
+            return self.value
+
+        def scalar_one(self):
+            return self.value
+
+    class Connection:
+        def __init__(self):
+            self.calls = []
+
+        def execute(self, statement, params=None):
+            sql = str(statement)
+            self.calls.append((sql, params))
+            if "pg_get_serial_sequence" in sql:
+                return Result("public.users_id_seq")
+            if "max(" in sql.lower():
+                return Result(17)
+            return Result(None)
+
+    connection = Connection()
+    _reset_postgresql_sequences(connection, [users])
+
+    sequence_update = next(call for call in connection.calls if "setval" in call[0])
+    assert sequence_update[1] == {
+        "sequence_name": "public.users_id_seq",
+        "last_value": 17,
+    }
 
 
 @pytest.fixture

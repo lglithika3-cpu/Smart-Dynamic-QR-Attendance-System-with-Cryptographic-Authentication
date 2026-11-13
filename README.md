@@ -78,59 +78,52 @@ Visit `http://127.0.0.1:5000`. Startup does not call `create_all()`; schema chan
 
 ## Render Deployment
 
-Render hosts the Flask web service but its managed database product is PostgreSQL, not MySQL. This project can connect to an external cloud MySQL 8-compatible provider; create the database with that provider and use its externally reachable, TLS-enabled connection details. The application uses SQLAlchemy with PyMySQL when `DATABASE_URL` uses `mysql://` or `mysql+pymysql://`.
+Render hosts the Flask web service and its managed database product is PostgreSQL. This project supports Aiven PostgreSQL and MySQL through SQLAlchemy; PostgreSQL URLs use psycopg and require TLS by default, while MySQL URLs use PyMySQL. Use the externally reachable Aiven PostgreSQL connection details for the existing database.
 
 Because you selected an import of the current SQLite records, complete the **Migrate the current SQLite records** steps before creating or starting the Render web service. Its startup command creates the initial administrator, and the importer intentionally refuses a non-empty target database.
 
 ### Push the existing project to GitHub
 
-From the project directory in PowerShell, use the empty repository you created at [Smart-Dynamic-QR-Attendance-System-with-Cryptographic-Authentication](https://github.com/lglithika3-cpu/Smart-Dynamic-QR-Attendance-System-with-Cryptographic-Authentication), then run:
+The project is published at [Smart-Dynamic-QR-Attendance-System-with-Cryptographic-Authentication](https://github.com/lglithika3-cpu/Smart-Dynamic-QR-Attendance-System-with-Cryptographic-Authentication). To publish later changes from the project directory in PowerShell, run:
 
 ```powershell
-git init
 git add .
 git status --short
-```
-
-Confirm `.env` and `instance/` are not listed before committing; they contain credentials, the local database, backups, and private profile photos.
-
-```powershell
-git commit -m "Prepare attendance app for deployment"
-git branch -M main
-git remote add origin https://github.com/lglithika3-cpu/Smart-Dynamic-QR-Attendance-System-with-Cryptographic-Authentication.git
-git push -u origin main
+git commit -m "Describe your change"
+git push
 ```
 
 The root `render.yaml` defines the Python web service, health check, migrations, initial administrator creation, and Gunicorn start command. After migrating the SQLite data, in Render choose **New → Blueprint**, connect this GitHub repository, and apply the Blueprint. Set the prompted environment variables:
 
-- `DATABASE_URL`: the cloud provider's MySQL URL, for example `mysql+pymysql://USER:PASSWORD@HOST:3306/DATABASE?charset=utf8mb4`. URL-encode special characters in the username/password. Follow the provider's instructions to allow the Render service to connect and require TLS; if it supplies a CA certificate file, add it as a Render secret file and set `DATABASE_SSL_CA` to its path.
+- `DATABASE_URL`: the Aiven PostgreSQL URL, for example `postgresql://USER:PASSWORD@HOST:PORT/DATABASE?sslmode=require`. URL-encode special characters in the username/password. The application adds `sslmode=require` if it is absent. If you configure a CA certificate, add it as a Render secret file and set `DATABASE_SSL_CA` to its path; the connection then verifies the certificate and hostname.
 - `ADMIN_EMAIL` and `ADMIN_PASSWORD`: the first administrator's email and a unique password of at least 12 characters. The startup command creates this account once and does not reset an existing account's password.
-- `PUBLIC_BASE_URL`: set this after the first deploy to the exact HTTPS URL Render assigns, for example `https://privacy-attendance.onrender.com`. Set it to enable trusted password-reset links.
 - Configure `MAIL_HOST`, `MAIL_PORT`, `MAIL_FROM`, and any SMTP credentials in Render if password-reset email is required.
 
 Render generates `SECRET_KEY`; set `QR_SIGNING_SECRET` manually. Because this app also uses that key to encrypt saved TOTP seeds, migrating an existing database requires using the exact current `QR_SIGNING_SECRET` from the local `.env`. Never put it in GitHub or send it in chat. Keep both keys stable across later deploys. The Blueprint enables secure cookies and trusts one Render proxy hop. It runs `flask db upgrade` and `bootstrap-admin` before Gunicorn starts. `/attendance/health` executes `SELECT 1`, so Render reports the service unhealthy if the configured database is unreachable.
 
+After the first successful deploy, set `PUBLIC_BASE_URL` in the Render service environment to its assigned HTTPS URL. This enables trusted password-reset links.
+
 ### Migrate the current SQLite records
 
-The GitHub repository does not contain your local database. To transfer its rows, first back up the SQLite database and confirm the local schema is at the latest Alembic revision. Create an empty cloud MySQL database, then from PowerShell set its URL for this process only (the prompt masks the value):
+The GitHub repository does not contain your local database. To transfer its rows, first back up the SQLite database and confirm the local schema is at the latest Alembic revision. Ensure the Aiven PostgreSQL database is empty, then from PowerShell set its URL for this process only (the prompt masks the value):
 
 ```powershell
-$secureUrl = Read-Host "MySQL DATABASE_URL" -AsSecureString
+$secureUrl = Read-Host "Aiven PostgreSQL DATABASE_URL" -AsSecureString
 $env:DATABASE_URL = [System.Net.NetworkCredential]::new("", $secureUrl).Password
 try {
     python -m flask --app run.py db upgrade
-    python scripts/migrate_sqlite_to_mysql.py --source "instance\attendance.db" --confirm-empty-target
+    python scripts/migrate_sqlite_to_database.py --source "instance\attendance.db" --confirm-empty-target
 }
 finally {
     Remove-Item Env:DATABASE_URL -ErrorAction SilentlyContinue
 }
 ```
 
-The importer refuses non-SQLite sources, mismatched schemas, and non-empty application tables; it preserves primary keys, copies in foreign-key order, and verifies row counts in a transaction. It intentionally does not copy the Alembic version row because migrations establish the target version. If the import reports a schema mismatch, stop and resolve it rather than forcing the copy. Then configure the same MySQL URL and the existing `QR_SIGNING_SECRET` in Render before creating the web service. Bootstrap will preserve an imported administrator with the same email; use that account's existing password. Private profile-photo files live outside the database and need a separate persistent-disk or object-storage transfer.
+The importer refuses non-SQLite sources, mismatched schemas, and non-empty application tables; it preserves primary keys, copies in foreign-key order, verifies row counts in a transaction, and advances PostgreSQL sequences so new rows will not collide with imported IDs. It intentionally does not copy the Alembic version row because migrations establish the target version. If the import reports a schema mismatch, stop and resolve it rather than forcing the copy. Then configure the same Aiven URL and the existing `QR_SIGNING_SECRET` in Render before creating the web service. Bootstrap will preserve an imported administrator with the same email; use that account's existing password. Private profile-photo files live outside the database and need a separate persistent-disk or object-storage transfer.
 
 The public URL shown in the Render dashboard is the same URL to open on laptops and phones. Use that `https://...onrender.com` URL on both devices; do not use `localhost` on a phone. HTTPS is required for browser camera permission. On the student device, sign in, open **Scan QR**, grant camera permission, and scan the active faculty QR displayed on the laptop. The QR remains HMAC-SHA256 signed, short-lived, nonce-bound, revocable, and protected against duplicate attendance by the database's unique constraint.
 
-Alembic migrations create the schema; the importer above transfers relational records but not private profile-photo files. SQLite's application-managed backup/restore commands do not work with MySQL; configure backups and recovery with the cloud MySQL provider. Render's free filesystem is ephemeral, so private profile-photo uploads require a persistent disk or external object storage to survive deploys/restarts; do not store them in GitHub.
+Alembic migrations create the schema; the importer above transfers relational records but not private profile-photo files. SQLite's application-managed backup/restore commands do not work with cloud databases; configure backups and recovery with Aiven. Render's free filesystem is ephemeral, so private profile-photo uploads require a persistent disk or external object storage to survive deploys/restarts; do not store them in GitHub.
 
 ### Local verification before deployment
 

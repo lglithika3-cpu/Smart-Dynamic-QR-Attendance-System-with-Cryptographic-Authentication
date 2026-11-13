@@ -1,12 +1,33 @@
 import argparse
 from pathlib import Path
 
-from sqlalchemy import MetaData, URL, create_engine, func, insert, select
+from sqlalchemy import MetaData, URL, create_engine, func, insert, select, text
 
 from app.config import BASE_DIR, Config
 
 
 _ALEMBIC_TABLE = "alembic_version"
+
+
+def _reset_postgresql_sequences(connection, tables):
+    for table in tables:
+        for column in table.primary_key.columns:
+            sequence_name = connection.execute(
+                text("SELECT pg_get_serial_sequence(:table_name, :column_name)"),
+                {"table_name": table.fullname, "column_name": column.name},
+            ).scalar_one_or_none()
+            if sequence_name is None:
+                continue
+
+            last_value = connection.execute(select(func.max(column))).scalar_one()
+            if last_value is not None:
+                connection.execute(
+                    text(
+                        "SELECT setval(CAST(:sequence_name AS regclass), "
+                        ":last_value, true)"
+                    ),
+                    {"sequence_name": sequence_name, "last_value": last_value},
+                )
 
 
 def copy_database_data(source_engine, target_engine, *, batch_size=500):
@@ -64,6 +85,9 @@ def copy_database_data(source_engine, target_engine, *, batch_size=500):
                     copied += len(rows)
                 source_counts[target_table.name] = copied
 
+            if target_engine.dialect.name == "postgresql":
+                _reset_postgresql_sequences(target, tables)
+
             for table in tables:
                 target_count = target.scalar(select(func.count()).select_from(table))
                 if target_count != source_counts[table.name]:
@@ -76,7 +100,7 @@ def copy_database_data(source_engine, target_engine, *, batch_size=500):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Copy all rows from the current SQLite schema into an empty MySQL database."
+        description="Copy rows from the current SQLite schema into an empty PostgreSQL or MySQL database."
     )
     parser.add_argument(
         "--source",
@@ -87,24 +111,23 @@ def main():
     parser.add_argument(
         "--confirm-empty-target",
         action="store_true",
-        help="Required confirmation that the migrated MySQL database is empty.",
+        help="Required confirmation that the target database is empty.",
     )
     args = parser.parse_args()
 
     if not args.confirm_empty_target:
-        parser.error("Pass --confirm-empty-target after verifying the MySQL database is empty.")
+        parser.error("Pass --confirm-empty-target after verifying the target database is empty.")
 
     source_path = args.source.resolve()
     if not source_path.is_file():
         parser.error(f"SQLite source database does not exist: {source_path}")
 
     target_url = Config.SQLALCHEMY_DATABASE_URI
-    if not target_url.startswith("mysql+pymysql://"):
-        parser.error("Set DATABASE_URL to a MySQL URL using the PyMySQL driver.")
-
     source_engine = create_engine(URL.create("sqlite", database=str(source_path)))
     target_engine = create_engine(target_url, **Config.SQLALCHEMY_ENGINE_OPTIONS)
     try:
+        if target_engine.dialect.name not in {"mysql", "postgresql"}:
+            parser.error("Set DATABASE_URL to a PostgreSQL or MySQL URL.")
         row_counts = copy_database_data(source_engine, target_engine)
     finally:
         source_engine.dispose()

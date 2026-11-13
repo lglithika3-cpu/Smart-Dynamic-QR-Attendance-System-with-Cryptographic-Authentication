@@ -24,7 +24,7 @@
             <button class="sidebar-link" type="submit" data-tooltip="Database backup" aria-label="Database backup" title="Database backup">{{ icons.icon('database-backup') }}<span class="nav-label">Database backup</span></button>
           </form>
         {% else %}
-          <span class="sidebar-link muted" title="Use the MySQL provider's backup controls">{{ icons.icon('database-backup') }}<span class="nav-label">MySQL provider backups</span></span>
+          <span class="sidebar-link muted" title="Use the cloud database provider's backup controls">{{ icons.icon('database-backup') }}<span class="nav-label">Cloud provider backups</span></span>
         {% endif %}
       </li>
     </ul>
@@ -411,7 +411,7 @@
         </table>
       {% else %}
         <h4>Database backups</h4>
-        <p class="muted">Manage MySQL backups and recovery with your cloud database provider.</p>
+        <p class="muted">Manage backups and recovery with your cloud database provider.</p>
       {% endif %}
     </div>
   </section>

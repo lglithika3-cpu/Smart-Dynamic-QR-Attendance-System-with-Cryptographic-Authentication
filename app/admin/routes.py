@@ -301,7 +301,7 @@ def enroll_student():
 @role_required("admin")
 def create_backup():
     if not current_app.config["APP_BACKUP_SUPPORTED"]:
-        flash("MySQL backups are managed by your database provider.", "info")
+        flash("Cloud database backups are managed by your database provider.", "info")
         return redirect(url_for("admin.dashboard"))
 
     from app.services.backup_service import create_backup

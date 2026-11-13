@@ -2,16 +2,31 @@ import os
 from pathlib import Path
 from datetime import timedelta
 from dotenv import load_dotenv
+from sqlalchemy.engine import make_url
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 
 
-def _normalize_database_url(database_url):
+def _normalize_database_url(database_url, ssl_ca=None):
     if not database_url:
         return f"sqlite:///{(BASE_DIR / 'instance' / 'attendance.db').resolve()}"
     if database_url.startswith("mysql://"):
         database_url = "mysql+pymysql://" + database_url[len("mysql://"):]
+    url = make_url(database_url)
+    if url.drivername in {
+        "postgres",
+        "postgresql",
+        "postgresql+psycopg",
+        "postgresql+psycopg2",
+    }:
+        url = url.set(drivername="postgresql+psycopg")
+        query = dict(url.query)
+        if ssl_ca:
+            query.update({"sslmode": "verify-full", "sslrootcert": ssl_ca})
+        else:
+            query.setdefault("sslmode", "require")
+        database_url = url.set(query=query).render_as_string(hide_password=False)
     if database_url.startswith("sqlite:///") and not database_url.startswith("sqlite:////"):
         relative_path = database_url.replace("sqlite:///", "", 1)
         if not os.path.isabs(relative_path):
@@ -22,11 +37,13 @@ def _normalize_database_url(database_url):
 class Config:
     SECRET_KEY = os.getenv("SECRET_KEY")
 
-    SQLALCHEMY_DATABASE_URI = _normalize_database_url(os.getenv("DATABASE_URL"))
+    database_ssl_ca = os.getenv("DATABASE_SSL_CA")
+    SQLALCHEMY_DATABASE_URI = _normalize_database_url(
+        os.getenv("DATABASE_URL"), ssl_ca=database_ssl_ca
+    )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_ENGINE_OPTIONS = {"pool_pre_ping": True}
-    database_ssl_ca = os.getenv("DATABASE_SSL_CA")
-    if database_ssl_ca:
+    if database_ssl_ca and SQLALCHEMY_DATABASE_URI.startswith("mysql+pymysql://"):
         SQLALCHEMY_ENGINE_OPTIONS["connect_args"] = {"ssl": {"ca": database_ssl_ca}}
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = os.getenv("SESSION_COOKIE_SAMESITE", "Lax")

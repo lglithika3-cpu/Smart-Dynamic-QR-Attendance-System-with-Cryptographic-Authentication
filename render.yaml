@@ -9,8 +9,6 @@ services:
     envVars:
       - key: DATABASE_URL
         sync: false
-      - key: DATABASE_SSL_CA
-        sync: false
       - key: SECRET_KEY
         generateValue: true
       - key: QR_SIGNING_SECRET
@@ -25,7 +23,5 @@ services:
         value: "true"
       - key: TRUST_PROXY
         value: "true"
-      - key: PUBLIC_BASE_URL
-        sync: false
       - key: RATELIMIT_STORAGE_URI
         value: memory://

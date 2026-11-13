@@ -21,7 +21,7 @@ def create_app(test_config=None):
         and app.config.get("REQUIRE_DATABASE_URL")
         and app.config["SQLALCHEMY_DATABASE_URI"].startswith("sqlite:")
     ):
-        raise RuntimeError("A persistent MySQL DATABASE_URL is required for this deployment.")
+        raise RuntimeError("A persistent external DATABASE_URL is required for this deployment.")
     if app.testing:
         if not app.config.get("SECRET_KEY"):
             app.config["SECRET_KEY"] = secrets.token_urlsafe(48)

@@ -1,12 +1,17 @@
+import ssl
 from io import BytesIO
 
 import pytest
 from PIL import Image
-from sqlalchemy import Column, ForeignKey, Integer, MetaData, String, Table, create_engine, insert, select
+from sqlalchemy import Column, ForeignKey, Integer, MetaData, String, Table, create_engine, insert, make_url, select
 
 from app import create_app
 from app.extensions import db
-from app.config import _normalize_database_url
+from app.config import (
+    _database_url_from_environment,
+    _normalize_database_url,
+    _sqlalchemy_engine_options,
+)
 from app.models.models import FacultyProfile, StudentEnrollment, StudentProfile, Subject, User
 from scripts.migrate_sqlite_to_database import (
     _reset_postgresql_sequences,
@@ -81,6 +86,53 @@ def test_sqlite_to_database_copy_refuses_nonempty_target(tmp_path):
 def test_mysql_database_url_uses_pymysql_driver():
     url = _normalize_database_url("mysql://user:password@db.example/app?charset=utf8mb4")
     assert url == "mysql+pymysql://user:password@db.example/app?charset=utf8mb4"
+
+
+def test_mysql_environment_url_encodes_credentials(monkeypatch):
+    monkeypatch.setenv("DB_HOST", "mysql.example")
+    monkeypatch.setenv("DB_PORT", "27887")
+    monkeypatch.setenv("DB_NAME", "defaultdb")
+    monkeypatch.setenv("DB_USER", "avnadmin")
+    monkeypatch.setenv("DB_PASSWORD", "p@ss:/?#word")
+
+    url = make_url(_database_url_from_environment())
+
+    assert url.drivername == "mysql+pymysql"
+    assert url.host == "mysql.example"
+    assert url.port == 27887
+    assert url.database == "defaultdb"
+    assert url.password == "p@ss:/?#word"
+    assert url.query["charset"] == "utf8mb4"
+
+
+def test_mysql_engine_uses_verified_aiven_ca(monkeypatch, tmp_path):
+    ca_file = tmp_path / "aiven-ca.pem"
+    ca_file.write_text("test certificate path")
+    create_default_context = ssl.create_default_context
+    loaded_ca_files = []
+
+    def create_context(*, cafile):
+        loaded_ca_files.append(cafile)
+        return create_default_context()
+
+    monkeypatch.setattr("app.config.ssl.create_default_context", create_context)
+    options = _sqlalchemy_engine_options(
+        "mysql+pymysql://avnadmin@mysql.example/defaultdb",
+        ssl_ca=str(ca_file),
+    )
+
+    ssl_context = options["connect_args"]["ssl"]
+    assert loaded_ca_files == [str(ca_file)]
+    assert ssl_context.verify_mode == ssl.CERT_REQUIRED
+    assert ssl_context.check_hostname is True
+
+
+def test_mysql_engine_refuses_missing_ca_or_disabled_ssl(tmp_path):
+    database_url = "mysql+pymysql://avnadmin@mysql.example/defaultdb"
+    with pytest.raises(RuntimeError, match="DATABASE_SSL_CA"):
+        _sqlalchemy_engine_options(database_url)
+    with pytest.raises(RuntimeError, match="DB_SSL_MODE=REQUIRED"):
+        _sqlalchemy_engine_options(database_url, ssl_ca=str(tmp_path), ssl_mode="DISABLED")
 
 
 def test_postgresql_database_url_uses_psycopg_and_tls():

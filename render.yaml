@@ -7,7 +7,19 @@ services:
     startCommand: flask --app run.py db upgrade && flask --app run.py bootstrap-admin && gunicorn --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 120 run:app
     healthCheckPath: /attendance/health
     envVars:
-      - key: DATABASE_URL
+      - key: DB_HOST
+        value: mysql-308e2af3-lglithika3-02e6.a.aivencloud.com
+      - key: DB_PORT
+        value: "27887"
+      - key: DB_NAME
+        value: defaultdb
+      - key: DB_USER
+        value: avnadmin
+      - key: DB_PASSWORD
+        sync: false
+      - key: DB_SSL_MODE
+        value: REQUIRED
+      - key: DATABASE_SSL_CA
         sync: false
       - key: SECRET_KEY
         generateValue: true

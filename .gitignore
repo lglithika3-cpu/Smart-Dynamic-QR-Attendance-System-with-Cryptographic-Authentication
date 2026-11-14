@@ -5,6 +5,15 @@ __pycache__/
 .env
 .env.*
 !.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+*.db
+*.sqlite
+*.sqlite3
 .venv/
 venv/
 instance/

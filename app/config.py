@@ -1,8 +1,10 @@
 import os
-from pathlib import Path
+import ssl
 from datetime import timedelta
+from pathlib import Path
+
 from dotenv import load_dotenv
-from sqlalchemy.engine import make_url
+from sqlalchemy.engine import URL, make_url
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
@@ -34,17 +36,78 @@ def _normalize_database_url(database_url, ssl_ca=None):
     return database_url
 
 
+def _database_url_from_environment():
+    host = os.getenv("DB_HOST", "").strip()
+    if not host:
+        return os.getenv("DATABASE_URL")
+
+    required = {
+        "DB_NAME": os.getenv("DB_NAME", "").strip(),
+        "DB_USER": os.getenv("DB_USER", "").strip(),
+        "DB_PASSWORD": os.getenv("DB_PASSWORD"),
+    }
+    missing = [name for name, value in required.items() if not value]
+    if missing:
+        raise RuntimeError(
+            "Set the following MySQL environment variables: " + ", ".join(missing)
+        )
+
+    try:
+        port = int(os.getenv("DB_PORT", "3306"))
+    except ValueError as exc:
+        raise RuntimeError("DB_PORT must be a valid port number.") from exc
+    if not 1 <= port <= 65535:
+        raise RuntimeError("DB_PORT must be between 1 and 65535.")
+
+    return URL.create(
+        "mysql+pymysql",
+        username=required["DB_USER"],
+        password=required["DB_PASSWORD"],
+        host=host,
+        port=port,
+        database=required["DB_NAME"],
+        query={"charset": "utf8mb4"},
+    ).render_as_string(hide_password=False)
+
+
+def _sqlalchemy_engine_options(database_url, ssl_ca=None, ssl_mode="REQUIRED"):
+    options = {"pool_pre_ping": True}
+    drivername = make_url(database_url).drivername
+    if drivername.startswith("mysql"):
+        if ssl_mode.strip().upper() != "REQUIRED":
+            raise RuntimeError("MySQL connections require DB_SSL_MODE=REQUIRED.")
+        if not ssl_ca:
+            raise RuntimeError(
+                "Set DATABASE_SSL_CA to the Aiven CA certificate path for MySQL."
+            )
+
+        ca_path = Path(ssl_ca).expanduser()
+        if not ca_path.is_file():
+            raise RuntimeError(
+                "DATABASE_SSL_CA must point to an existing Aiven CA certificate file."
+            )
+        try:
+            ssl_context = ssl.create_default_context(cafile=str(ca_path))
+        except (OSError, ssl.SSLError) as exc:
+            raise RuntimeError("The Aiven CA certificate could not be loaded.") from exc
+        options["connect_args"] = {"ssl": ssl_context}
+    return options
+
+
 class Config:
     SECRET_KEY = os.getenv("SECRET_KEY")
 
-    database_ssl_ca = os.getenv("DATABASE_SSL_CA")
+    DATABASE_SSL_CA = os.getenv("DATABASE_SSL_CA")
+    DB_SSL_MODE = os.getenv("DB_SSL_MODE", "REQUIRED")
     SQLALCHEMY_DATABASE_URI = _normalize_database_url(
-        os.getenv("DATABASE_URL"), ssl_ca=database_ssl_ca
+        _database_url_from_environment(), ssl_ca=DATABASE_SSL_CA
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
-    SQLALCHEMY_ENGINE_OPTIONS = {"pool_pre_ping": True}
-    if database_ssl_ca and SQLALCHEMY_DATABASE_URI.startswith("mysql+pymysql://"):
-        SQLALCHEMY_ENGINE_OPTIONS["connect_args"] = {"ssl": {"ca": database_ssl_ca}}
+    SQLALCHEMY_ENGINE_OPTIONS = _sqlalchemy_engine_options(
+        SQLALCHEMY_DATABASE_URI,
+        ssl_ca=DATABASE_SSL_CA,
+        ssl_mode=DB_SSL_MODE,
+    )
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = os.getenv("SESSION_COOKIE_SAMESITE", "Lax")
     SESSION_COOKIE_SECURE = os.getenv("SESSION_COOKIE_SECURE", "False").lower() in {

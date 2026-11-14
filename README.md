@@ -1,6 +1,6 @@
 # Privacy Attendance
 
-An existing Flask application for role-aware academic attendance, short-lived HMAC-authenticated QR sessions, and SQLite persistence. Flask/Jinja renders the dashboards; SQLAlchemy models the data; Flask-Login, Flask-WTF, Flask-Limiter, and Flask-Migrate provide authentication, CSRF, rate limiting, and schema revisions.
+An existing Flask application for role-aware academic attendance, short-lived HMAC-authenticated QR sessions, and SQLAlchemy persistence (SQLite for local development and Aiven MySQL for production). Flask/Jinja renders the dashboards; SQLAlchemy models the data; Flask-Login, Flask-WTF, Flask-Limiter, and Flask-Migrate provide authentication, CSRF, rate limiting, and schema revisions.
 
 ## Architecture
 
@@ -76,62 +76,55 @@ python run.py
 
 Visit `http://127.0.0.1:5000`. Startup does not call `create_all()`; schema changes must go through migrations.
 
-## Render Deployment
+## Aiven MySQL and Render Deployment
 
-Render hosts the Flask web service and its managed database product is PostgreSQL. This project supports Aiven PostgreSQL and MySQL through SQLAlchemy; PostgreSQL URLs use psycopg and require TLS by default, while MySQL URLs use PyMySQL. Use the externally reachable Aiven PostgreSQL connection details for the existing database.
+The production database target is the Aiven MySQL service specified for this deployment. The existing SQLAlchemy models and Alembic migrations are retained; the application does not call `create_all()` at startup. MySQL connections use PyMySQL and require the Aiven CA certificate with certificate and hostname verification enabled. PostgreSQL URL support remains available for existing deployments.
 
-Because you selected an import of the current SQLite records, complete the **Migrate the current SQLite records** steps before creating or starting the Render web service. Its startup command creates the initial administrator, and the importer intentionally refuses a non-empty target database.
+### Configure a local MySQL connection
+
+Copy `.env.example` to `.env` if needed. Set `DB_HOST`, `DB_PORT`, `DB_NAME`, and `DB_USER` to the values in `render.yaml`, put the database password only in the ignored `.env` as `DB_PASSWORD`, and set `DB_SSL_MODE=REQUIRED`. Download the CA certificate from the Aiven service's connection information and set `DATABASE_SSL_CA` to the local certificate file path. Do not put database passwords or private keys in source files or commit `.env`.
+
+When `DB_HOST` is set, the app builds a MySQL URL safely from the separate `DB_*` values, including passwords containing URL punctuation. When `DB_HOST` is blank, the app continues to use `DATABASE_URL` (SQLite by default in `.env.example`). MySQL startup fails clearly if the password, CA file, or required TLS configuration is missing.
 
 ### Push the existing project to GitHub
 
-The project is published at [Smart-Dynamic-QR-Attendance-System-with-Cryptographic-Authentication](https://github.com/lglithika3-cpu/Smart-Dynamic-QR-Attendance-System-with-Cryptographic-Authentication). To publish later changes from the project directory in PowerShell, run:
+The existing `main` branch is the deployment source. After reviewing the diff, publish only the intended changes from PowerShell:
 
 ```powershell
-git add .
 git status --short
-git commit -m "Describe your change"
-git push
+git add .gitignore app/config.py app/__init__.py tests/test_basic.py .env.example render.yaml README.md
+git diff --cached --check
+git commit -m "Configure verified Aiven MySQL deployment"
+git push origin main
 ```
 
-The root `render.yaml` defines the Python web service, health check, migrations, initial administrator creation, and Gunicorn start command. After migrating the SQLite data, in Render choose **New → Blueprint**, connect this GitHub repository, and apply the Blueprint. Set the prompted environment variables:
+`.env`, `instance/`, and local backups are excluded by `.gitignore`. Never use `git add -f` on these paths.
 
-- `DATABASE_URL`: the Aiven PostgreSQL URL, for example `postgresql://USER:PASSWORD@HOST:PORT/DATABASE?sslmode=require`. URL-encode special characters in the username/password. The application adds `sslmode=require` if it is absent. If you configure a CA certificate, add it as a Render secret file and set `DATABASE_SSL_CA` to its path; the connection then verifies the certificate and hostname.
-- `ADMIN_EMAIL` and `ADMIN_PASSWORD`: the first administrator's email and a unique password of at least 12 characters. The startup command creates this account once and does not reset an existing account's password.
-- Configure `MAIL_HOST`, `MAIL_PORT`, `MAIL_FROM`, and any SMTP credentials in Render if password-reset email is required.
+### Create and deploy the Render web service
 
-Render generates `SECRET_KEY`; set `QR_SIGNING_SECRET` manually. Because this app also uses that key to encrypt saved TOTP seeds, migrating an existing database requires using the exact current `QR_SIGNING_SECRET` from the local `.env`. Never put it in GitHub or send it in chat. Keep both keys stable across later deploys. The Blueprint enables secure cookies and trusts one Render proxy hop. It runs `flask db upgrade` and `bootstrap-admin` before Gunicorn starts. `/attendance/health` executes `SELECT 1`, so Render reports the service unhealthy if the configured database is unreachable.
+1. Sign in to Render and connect the GitHub account that owns the existing repository. Select **New → Blueprint**, choose `lglithika3-cpu/Smart-Dynamic-QR-Attendance-System-with-Cryptographic-Authentication`, and select branch `main`.
+2. Review the root `render.yaml` before applying it. It defines a Python 3.11 service build (`pip install -r requirements.txt`), a start command that runs Alembic upgrades and the idempotent administrator bootstrap before Gunicorn, and `/attendance/health` as the health check.
+3. In the service's environment settings, provide `DB_PASSWORD`, a strong `QR_SIGNING_SECRET` (at least 32 characters and different from `SECRET_KEY`), `ADMIN_EMAIL`, and a unique `ADMIN_PASSWORD` (at least 12 characters). Render generates `SECRET_KEY`. Do not send these secrets in chat or commit them.
+4. In Render, add the Aiven CA certificate as a **Secret File** named `aiven-ca.pem`. Render mounts it at `/etc/secrets/aiven-ca.pem`; set `DATABASE_SSL_CA` to exactly `/etc/secrets/aiven-ca.pem`. Keep `DB_SSL_MODE=REQUIRED`; the application rejects a missing/invalid CA file and uses a verifying TLS context. Do not disable certificate verification.
+5. Deploy and review the build/deploy logs. A healthy service must return HTTP 200 from `/attendance/health` with `{"status":"ok","database":"ok"}`. A database or migration failure must be resolved from its explicit log before proceeding.
+6. After Render assigns the public `https://` service URL, set `PUBLIC_BASE_URL` to that exact URL if password-reset email is configured. The same HTTPS URL works on laptops and mobile devices; HTTPS (or localhost during development) is required for camera access.
 
-After the first successful deploy, set `PUBLIC_BASE_URL` in the Render service environment to its assigned HTTPS URL. This enables trusted password-reset links.
+`render.yaml` provides the non-secret Aiven host, port, database name, user, and TLS mode from the supplied configuration. Enter the password and CA file through Render's protected service settings. The first bootstrap creates the administrator only if its email is not already present; it does not reset an existing password. Configure mail settings in Render only if password-reset emails are required.
 
-### Migrate the current SQLite records
+### Existing database data and migrations
 
-The GitHub repository does not contain your local database. To transfer its rows, first back up the SQLite database and confirm the local schema is at the latest Alembic revision. Ensure the Aiven PostgreSQL database is empty, then from PowerShell set its URL for this process only (the prompt masks the value):
+Back up existing Aiven data before schema changes. The deployment start command runs `flask --app run.py db upgrade`, which applies the repository's Alembic revisions; it does not recreate tables with `create_all()`. If the Aiven database already contains application tables, first verify its Alembic revision and schema. Do not stamp a revision or run the SQLite importer against a non-empty target without checking that the schemas match. The importer refuses non-empty application tables and can transfer the local SQLite rows only when the target is empty. Private profile-photo files are outside the database and need separate persistent storage; Render's free filesystem is ephemeral.
 
-```powershell
-$secureUrl = Read-Host "Aiven PostgreSQL DATABASE_URL" -AsSecureString
-$env:DATABASE_URL = [System.Net.NetworkCredential]::new("", $secureUrl).Password
-try {
-    python -m flask --app run.py db upgrade
-    python scripts/migrate_sqlite_to_database.py --source "instance\attendance.db" --confirm-empty-target
-}
-finally {
-    Remove-Item Env:DATABASE_URL -ErrorAction SilentlyContinue
-}
-```
-
-The importer refuses non-SQLite sources, mismatched schemas, and non-empty application tables; it preserves primary keys, copies in foreign-key order, verifies row counts in a transaction, and advances PostgreSQL sequences so new rows will not collide with imported IDs. It intentionally does not copy the Alembic version row because migrations establish the target version. If the import reports a schema mismatch, stop and resolve it rather than forcing the copy. Then configure the same Aiven URL and the existing `QR_SIGNING_SECRET` in Render before creating the web service. Bootstrap will preserve an imported administrator with the same email; use that account's existing password. Private profile-photo files live outside the database and need a separate persistent-disk or object-storage transfer.
-
-The public URL shown in the Render dashboard is the same URL to open on laptops and phones. Use that `https://...onrender.com` URL on both devices; do not use `localhost` on a phone. HTTPS is required for browser camera permission. On the student device, sign in, open **Scan QR**, grant camera permission, and scan the active faculty QR displayed on the laptop. The QR remains HMAC-SHA256 signed, short-lived, nonce-bound, revocable, and protected against duplicate attendance by the database's unique constraint.
-
-Alembic migrations create the schema; the importer above transfers relational records but not private profile-photo files. SQLite's application-managed backup/restore commands do not work with cloud databases; configure backups and recovery with Aiven. Render's free filesystem is ephemeral, so private profile-photo uploads require a persistent disk or external object storage to survive deploys/restarts; do not store them in GitHub.
+The dynamic attendance QR remains HMAC-SHA256 signed, short-lived, nonce-bound, revocable, and checked server-side. The database's unique `(session_id, student_id)` constraint prevents duplicate attendance. For mobile scanning, sign in on the phone, open **Scan QR**, grant camera permission, and scan the active faculty QR displayed on the laptop. Camera scanning itself still needs verification on a real HTTPS deployment and device.
 
 ### Local verification before deployment
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest -q
-.\.venv\Scripts\python.exe -m flask --app run.py db upgrade
 .\.venv\Scripts\python.exe run.py
 ```
+
+Run `flask db upgrade` only after confirming the selected `DATABASE_URL`/`DB_*` target and backing up any existing database. Do not point a local migration command at a live database unintentionally.
 
 Open `http://127.0.0.1:5000` on the laptop. Camera access on a phone requires the deployed HTTPS address (or a local HTTPS tunnel), not the laptop's `127.0.0.1` address.
 

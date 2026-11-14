@@ -5,7 +5,7 @@ from flask_login import current_user
 from flask_wtf.csrf import CSRFError
 from werkzeug.middleware.proxy_fix import ProxyFix
 
-from app.config import Config
+from app.config import Config, _sqlalchemy_engine_options
 from app.extensions import db, login_manager, migrate, csrf, limiter
 
 
@@ -15,6 +15,19 @@ def create_app(test_config=None):
 
     if test_config:
         app.config.from_mapping(test_config)
+        if (
+            "SQLALCHEMY_ENGINE_OPTIONS" not in test_config
+            and {
+                "SQLALCHEMY_DATABASE_URI",
+                "DATABASE_SSL_CA",
+                "DB_SSL_MODE",
+            }.intersection(test_config)
+        ):
+            app.config["SQLALCHEMY_ENGINE_OPTIONS"] = _sqlalchemy_engine_options(
+                app.config["SQLALCHEMY_DATABASE_URI"],
+                ssl_ca=app.config.get("DATABASE_SSL_CA"),
+                ssl_mode=app.config.get("DB_SSL_MODE", "REQUIRED"),
+            )
 
     if (
         not app.testing
